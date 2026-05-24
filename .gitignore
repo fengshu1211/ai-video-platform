@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+*.pyo
+backend/data.db
+backend/uploads/
+backend/sync_storage/
+node_modules/
+frontend/dist/
+.env
+*.log

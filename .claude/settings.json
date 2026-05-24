@@ -1,0 +1,33 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(ssh -o StrictHostKeyChecking=no -p 22593 *)",
+      "Bash(ssh -o StrictHostKeyChecking=no -p 15123 *)",
+      "Bash(ssh -f -N *)",
+      "Bash(ffprobe *)",
+      "Bash(ffmpeg *)",
+      "Bash(python -m uvicorn app.main:app *)",
+      "Bash(python -m py_compile *)",
+      "Bash(pip install *)",
+      "Bash(taskkill *)",
+      "Bash(curl -s *)",
+      "Bash(netstat -ano *)",
+      "Bash(npm --prefix * run build)",
+      "Bash(npm run *)",
+      "Bash(rm -f /d/应用开发项目集/AI短视频创作平台项目/backend/uploads/*)",
+      "Bash(rm -rf /d/应用开发项目集/AI短视频创作平台项目/backend/__pycache__/*)",
+      "Bash(find /d/应用开发项目集/AI短视频创作平台项目/backend -name *)",
+      "Bash(find /d/应用开发项目集/AI短视频创作平台项目/backend -type d -name *)",
+      "Bash(cat /d/应用开发项目集/AI短视频创作平台项目/*)",
+      "Bash(ls /d/应用开发项目集/AI短视频创作平台项目/*)",
+      "Bash(stat /d/应用开发项目集/AI短视频创作平台项目/*)",
+      "Bash(grep *)",
+      "Bash(python -c \"from app.services.*)",
+      "Bash(python -c \"import *)",
+      "Write(d:/应用开发项目集/AI短视频创作平台项目/*)",
+      "Edit(d:/应用开发项目集/AI短视频创作平台项目/*)"
+    ],
+    "defaultMode": "bypassPermissions"
+  },
+  "skipDangerousModePermissionPrompt": true
+}
