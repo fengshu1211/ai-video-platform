@@ -107,6 +107,10 @@ app.mount("/uploads", StaticFiles(directory=str(UPLOADS_DIR)), name="uploads")
 def health():
     return {"code": 0, "message": "ok"}
 
+@app.get("/ping")
+def ping():
+    return {"status": "alive"}
+
 
 @app.get("/{full_path:path}")
 async def serve_frontend(full_path: str):
