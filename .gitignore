@@ -1,10 +1,14 @@
 __pycache__/
 *.pyc
 *.pyo
-backend/data.db
+*.db
+*.db-shm
+*.db-wal
 backend/uploads/
 backend/sync_storage/
 node_modules/
 frontend/dist/
 .env
 *.log
+scripts/models/
+*.pth
