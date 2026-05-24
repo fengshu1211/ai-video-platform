@@ -27,7 +27,10 @@ class BeijingJSONResponse(JSONResponse):
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    init_db()
+    try:
+        init_db()
+    except Exception as e:
+        print(f"init_db failed: {e}")
     # 每周一10:37自动刷新选题
     try:
         from apscheduler.schedulers.background import BackgroundScheduler
