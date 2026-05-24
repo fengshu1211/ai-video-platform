@@ -4,5 +4,5 @@ services:
     runtime: python
     region: oregon
     buildCommand: pip install fastapi uvicorn sqlalchemy pydantic python-multipart httpx openai apscheduler
-    startCommand: python -m uvicorn backend.app.main:app --host 0.0.0.0 --port $PORT
+    startCommand: python -m uvicorn backend.app_test:app --host 0.0.0.0 --port $PORT
     plan: free
