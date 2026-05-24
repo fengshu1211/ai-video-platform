@@ -7,7 +7,6 @@ __pycache__/
 backend/uploads/
 backend/sync_storage/
 node_modules/
-frontend/dist/
 .env
 *.log
 scripts/models/
