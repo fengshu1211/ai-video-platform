@@ -1,9 +1,18 @@
 """爆款选题分析 — 真实搜索 + AI分析"""
 import json
+import os
 from openai import OpenAI
-from app.config import DASHSCOPE_API_KEY, DASHSCOPE_BASE_URL
+from app.config import DASHSCOPE_BASE_URL
 
-client = OpenAI(api_key=DASHSCOPE_API_KEY, base_url=DASHSCOPE_BASE_URL)
+def _get_client():
+    try:
+        from app.main import get_user_key
+        key = get_user_key("dashscope") or os.getenv("DASHSCOPE_API_KEY", "")
+    except Exception:
+        key = os.getenv("DASHSCOPE_API_KEY", "")
+    if not key:
+        raise RuntimeError("请先在系统设置中配置通义千问 API Key")
+    return OpenAI(api_key=key, base_url=DASHSCOPE_BASE_URL)
 
 
 def _search_web(keyword: str, max_results: int = 5) -> list[dict]:
@@ -43,7 +52,7 @@ def generate_hot_topics(track_name: str, count: int = 8) -> list[dict]:
     else:
         search_context = f"请根据你对{track_name}赛道的了解生成选题"
 
-    response = client.chat.completions.create(
+    response = _get_client().chat.completions.create(
         model="qwen-plus",
         messages=[
             {"role": "system", "content": f"""你是自媒体选题分析专家。基于真实的网络搜索数据，结合{track_name}赛道特点，生成可能成为爆款的选题。
