@@ -30,7 +30,7 @@ class PersonaReq(BaseModel):
     name: str = ""
     industry: str = ""
     specialization: str = ""  # 细分领域
-    brand_name: str = ""      # 品牌名称
+    author_name: str = ""     # 署名名称
     role: str = ""
     personality: str = ""
     hobbies: str = ""
@@ -86,7 +86,7 @@ def save_persona(data: PersonaReq, user_id: int, db: Session = Depends(get_db)):
 
     persona.industry = data.industry or persona.industry if hasattr(persona, 'industry') else data.industry
     persona.specialization = data.specialization
-    persona.brand_name = data.brand_name
+    persona.author_name = data.author_name
     persona.role = data.role
     persona.personality = data.personality
     persona.hobbies = data.hobbies
@@ -117,7 +117,7 @@ def list_personas(user_id: int, db: Session = Depends(get_db)):
     return {"code": 0, "personas": [{
         "id": p.id, "name": getattr(p, 'name', '未命名'),
         "industry": p.industry, "specialization": getattr(p, 'specialization', ''),
-        "brand_name": getattr(p, 'brand_name', ''),
+        "author_name": getattr(p, 'author_name', ''),
         "role": p.role, "personality": p.personality,
         "features": getattr(p, 'features', ''),
         "content_style": p.content_style, "target_audience": p.target_audience,

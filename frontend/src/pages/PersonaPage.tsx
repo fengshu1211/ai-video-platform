@@ -106,15 +106,15 @@ export default function PersonaPage({ userId }: Props) {
 
       <Card size="small" title={activeId === 'new' ? '新建人设' : `编辑：${activePersona?.name || '未命名'}`} style={{ borderRadius: 14 }}>
         <Form form={form} layout="vertical" onFinish={handleSave} size="large">
-          <Form.Item name="name" label="人设名称" initialValue="">
-            <Input placeholder="如：主业、副业、历史科普号" />
+          <Form.Item name="name" label="标签名" tooltip="只给自己看，区分主业副业" initialValue="">
+            <Input placeholder="如：主业、副业" />
           </Form.Item>
           <Form.Item name="industry" label="行业"><Input placeholder="如：历史科普、家居装修、美食探店" /></Form.Item>
           <Form.Item name="specialization" label="细分领域"><Input placeholder="如：实木地板、汉朝专题、川菜探店" /></Form.Item>
-          <Form.Item name="brand_name" label="品牌名称"><Input placeholder="如：丰述实木、XX工作室" /></Form.Item>
+          <Form.Item name="author_name" label="署名名称" tooltip="会出现在生成的文案中"><Input placeholder="如：丰哥、丰述、XX工作室" /></Form.Item>
           <Form.Item name="role" label="角色/职位"><Input placeholder="如：历史博主、设计师、厨师" /></Form.Item>
           <Form.Item name="personality" label="性格特征"><Input placeholder="如：幽默风趣、严肃认真、亲和力强" /></Form.Item>
-          <Form.Item name="features" label="产品特点/卖点"><Input.TextArea rows={2} placeholder="你的核心优势，如：只做实木、30年老店、纯手工、产地直供" /></Form.Item>
+          <Form.Item name="features" label="核心特色" tooltip="知识博主填擅长领域，商家填产品卖点"><Input.TextArea rows={2} placeholder="知识博主：擅长讲小人物故事、冷知识挖掘&#10;商家：只做实木、30年老店、产地直供" /></Form.Item>
           <Form.Item name="content_style" label="内容风格偏好">
             <Select placeholder="选择偏好风格" options={[
               { label: '幽默口语化', value: '幽默口语化' }, { label: '沉稳专业风', value: '沉稳专业风' },

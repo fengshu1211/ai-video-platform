@@ -99,7 +99,8 @@ def analyze_persona_style(persona_data: dict) -> dict:
 用户信息：
 - 行业：{persona_data.get('industry', '未填写')}
 - 细分领域：{persona_data.get('specialization', '未填写')}
-- 品牌名称：{persona_data.get('brand_name', '未填写')}
+- 署名名称：{persona_data.get('author_name', '未填写')}
+- 核心特色/擅长领域：{persona_data.get('features', '未填写')}
 - 角色/职位：{persona_data.get('role', '未填写')}
 - 性格：{persona_data.get('personality', '未填写')}
 - 产品特点/卖点：{persona_data.get('features', '未填写')}

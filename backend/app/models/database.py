@@ -72,13 +72,13 @@ class UserPersona(Base):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     user_id = Column(Integer, ForeignKey("users.id"))
-    name = Column(String(100), default="未命名")
+    name = Column(String(100), default="未命名")     # 标签名（内部用）
     industry = Column(String(100))
     specialization = Column(String(200))  # 细分领域
-    brand_name = Column(String(100))      # 品牌名称
+    author_name = Column(String(100))     #  署名名称（出现在文案中）
     role = Column(String(100))
     personality = Column(Text)
-    features = Column(Text)               # 产品特点/卖点
+    features = Column(Text)               # 核心特色（知识博主填擅长领域，商家填产品卖点）
     content_style = Column(Text)
     target_audience = Column(String(200))
     ai_style_template = Column(Text)  # AI分析的专属风格模板JSON
