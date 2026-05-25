@@ -33,6 +33,7 @@ class PersonaReq(BaseModel):
     brand_name: str = ""      # 品牌名称
     role: str = ""
     personality: str = ""
+    hobbies: str = ""
     features: str = ""        # 产品特点/卖点
     content_style: str = ""
     target_audience: str = ""
