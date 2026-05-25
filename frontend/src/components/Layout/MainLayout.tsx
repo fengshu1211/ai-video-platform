@@ -107,7 +107,7 @@ export default function MainLayout({ user, onLogout }: { user?: any; onLogout?: 
           }}
         >
           <span>{menuItems.find(m => m.key === location.pathname)?.label || '工作台'}</span>
-          <Button type="link" icon={<QuestionCircleOutlined />} href="/使用说明书.html" target="_blank"
+          <Button type="link" icon={<QuestionCircleOutlined />} href="/manual.html" target="_blank"
             style={{ color: '#60a5fa', fontSize: 13 }}>
             使用说明
           </Button>

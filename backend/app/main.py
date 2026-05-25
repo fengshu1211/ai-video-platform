@@ -111,6 +111,13 @@ def health():
 def ping():
     return {"status": "alive"}
 
+@app.get("/manual.html")
+def serve_manual():
+    manual = FRONTEND_DIR / "manual.html"
+    if manual.exists():
+        return FileResponse(manual)
+    return {"code": 404, "message": "manual not found"}
+
 
 @app.get("/{full_path:path}")
 async def serve_frontend(full_path: str):
