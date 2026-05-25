@@ -191,7 +191,7 @@ export default function VideoPage() {
 
       <Alert
         message="视频生成说明"
-        description="输入文案→AI导演分析→自动搜图匹配→语音合成→字幕生成。支持Ken Burns镜头动画（缩放/平移/对角线）、交叉淡化转场。露脸可选’自动对齐’或’对口型’模式，不露脸选’图文解说’。"
+        description="建议优先上传自己的实拍照片/视频素材，出来的视频才是独一无二的。系统搜图匹配只是备用方案，不一定精准适配你的内容。支持Ken Burns镜头动画、交叉淡化转场。露脸可选’自动对齐’或’对口型’模式，不露脸选’图文解说’。"
         type="info"
         showIcon
         style={{ marginBottom: 16 }}
@@ -294,9 +294,9 @@ export default function VideoPage() {
           </Card>
 
           {/* ── 素材上传 ── */}
-          <Card size="small" title="🖼️ 素材（可选）" style={{ marginBottom: 12 }}>
-            <div style={{ fontSize: 12, color: '#999', marginBottom: 8 }}>
-              不传素材时，自动搜索匹配图片作为背景
+          <Card size="small" title="🖼️ 上传素材（强烈建议）" style={{ marginBottom: 12 }}>
+            <div style={{ fontSize: 12, color: '#fbbf24', marginBottom: 8 }}>
+              ⭐ 上传你自己的实拍照片/视频，视频才有专属风格。不传则自动搜图（匹配度有限）。
             </div>
             <Upload
               multiple
