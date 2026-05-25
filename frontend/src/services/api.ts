@@ -2,7 +2,7 @@ import axios from 'axios'
 
 const api = axios.create({ baseURL: '/api' })
 
-// 请求拦截：自动附带用户API keys
+// 请求拦截：自动附带用户API keys + user_id
 api.interceptors.request.use((config) => {
   try {
     const keys = JSON.parse(localStorage.getItem('user_api_keys') || '{}')
@@ -11,6 +11,10 @@ api.interceptors.request.use((config) => {
       config.headers['X-Pexels-Key'] = keys.pexels_key || ''
       config.headers['X-Pixabay-Key'] = keys.pixabay_key || ''
       config.headers['X-SiliconFlow-Key'] = keys.siliconflow_key || ''
+    }
+    const user = JSON.parse(localStorage.getItem('current_user') || '{}')
+    if (user.userId) {
+      config.headers['X-User-Id'] = String(user.userId)
     }
   } catch {}
   return config

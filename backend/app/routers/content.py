@@ -1,5 +1,5 @@
 """内容改写 API"""
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 from app.models.database import get_db, RewrittenScript
 from app.schemas.content import RewriteRequest, ScrapeRequest, ScriptOut, ScriptUpdate
@@ -7,14 +7,21 @@ from app.services.ai_service import rewrite_text, generate_titles
 
 router = APIRouter(prefix="/api/content", tags=["content"])
 
+def _get_uid() -> int | None:
+    try:
+        from app.main import get_current_user_id
+        return get_current_user_id()
+    except Exception:
+        return None
+
 
 @router.post("/rewrite", response_model=ScriptOut)
 def rewrite_content(data: RewriteRequest, db: Session = Depends(get_db)):
-    # style=keep：不调用AI，直接使用原文
+    user_id = data.user_id or _get_uid()
     if data.style == "keep":
         rewritten = data.original_text
     else:
-        rewritten = rewrite_text(data.original_text, data.style, data.target_word_count)
+        rewritten = rewrite_text(data.original_text, data.style, data.target_word_count, user_id=user_id)
 
     script = RewrittenScript(
         topic_id=data.topic_id,
@@ -131,7 +138,7 @@ tags字段放推荐的标签列表，格式如"#历史 #明朝 #朱元璋 #帝�
 def gen_titles(data: RewriteRequest, db: Session = Depends(get_db)):
     """为文案生成爆款标题"""
     try:
-        titles = generate_titles(data.original_text)
+        titles = generate_titles(data.original_text, user_id=data.user_id or _get_uid())
         return {"code": 0, "data": titles}
     except Exception as e:
         return {"code": 1, "message": f"生成失败：{str(e)[:100]}"}

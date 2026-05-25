@@ -20,6 +20,52 @@ def _get_client():
 _cache: dict[str, tuple[float, str]] = {}
 
 
+def get_persona_context(user_id: int = None) -> str:
+    """读取用户人设AI风格模板，生成一段注入AI的上下文"""
+    if not user_id:
+        return ""
+    try:
+        import sqlite3, json
+        conn = sqlite3.connect("data.db")
+        rows = conn.execute(
+            "SELECT ai_style_template, industry, specialization, author_name, personality, content_style, target_audience "
+            "FROM user_personas WHERE user_id=? LIMIT 1", (user_id,)
+        ).fetchall()
+        conn.close()
+        if not rows or not rows[0][0]:
+            return ""
+        tmpl = json.loads(rows[0][0]) if isinstance(rows[0][0], str) else rows[0][0]
+        ind, spec, author, pers, style, aud = rows[0][1], rows[0][2], rows[0][3], rows[0][4], rows[0][5], rows[0][6]
+
+        parts = []
+        if author:
+            parts.append(f"作者署名: {author}")
+        if ind:
+            parts.append(f"行业: {ind}" + (f"/{spec}" if spec else ""))
+        if pers:
+            parts.append(f"性格: {pers}")
+        if style:
+            parts.append(f"内容风格: {style}")
+        if aud:
+            parts.append(f"目标受众: {aud}")
+        if tmpl.get("tone"):
+            parts.append(f"语气: {tmpl['tone']}")
+        if tmpl.get("sentence_length"):
+            parts.append(f"句长偏好: {tmpl['sentence_length']}")
+        if tmpl.get("writing_tips"):
+            parts.append(f"创作要点: {tmpl['writing_tips']}")
+        if tmpl.get("taboo_words"):
+            parts.append(f"避免词汇: {', '.join(tmpl['taboo_words'])}")
+        if tmpl.get("openings"):
+            parts.append(f"开头参考: {tmpl['openings'][0]}")
+        if tmpl.get("closings"):
+            parts.append(f"结尾参考: {tmpl['closings'][0]}")
+
+        return "\n".join(parts) if parts else ""
+    except Exception:
+        return ""
+
+
 def _cache_key(text: str, style: str) -> str:
     return hashlib.md5(f"{text}|{style}".encode()).hexdigest()
 
@@ -47,12 +93,18 @@ STYLE_PROMPTS = {
 }
 
 
-def generate_titles(text: str, count: int = 5) -> list[str]:
-    """为文案生成爆款标题"""
+def generate_titles(text: str, count: int = 5, user_id: int = None) -> list[str]:
+    """为文案生成爆款标题（自动注入人设风格）"""
+    persona_ctx = get_persona_context(user_id)
+    system = "你是爆款标题专家。根据文案内容生成多个吸引眼球的标题，每个标题≤30字。"
+    if persona_ctx:
+        system += f" 标题要符合以下创作者风格：{persona_ctx}"
+    system += " 输出JSON数组：[\"标题1\",\"标题2\",...]"
+
     response = _get_client().chat.completions.create(
         model="qwen-plus",
         messages=[
-            {"role": "system", "content": "你是爆款标题专家。根据文案内容生成多个吸引眼球的标题，每个标题≤30字。输出JSON数组：[\"标题1\",\"标题2\",...]"},
+            {"role": "system", "content": system},
             {"role": "user", "content": f"根据以下内容生成{count}个爆款标题：\n{text[:1500]}"},
         ],
         temperature=0.9, max_tokens=500,
@@ -64,9 +116,10 @@ def generate_titles(text: str, count: int = 5) -> list[str]:
     return json.loads(raw)
 
 
-def rewrite_text(text: str, style: str = "similar", target_word_count: int | None = None) -> str:
-    """AI改写文案，style: similar/original/aggressive，支持目标字数"""
-    cache_key = f"{text}|{style}|{target_word_count or ''}"
+def rewrite_text(text: str, style: str = "similar", target_word_count: int | None = None,
+                 user_id: int = None) -> str:
+    """AI改写文案，自动注入用户人设风格"""
+    cache_key = f"{text}|{style}|{target_word_count or ''}|{user_id or ''}"
     cached = _get_cached(cache_key, "rewrite")
     if cached:
         return cached
@@ -75,10 +128,15 @@ def rewrite_text(text: str, style: str = "similar", target_word_count: int | Non
     if target_word_count and target_word_count > 0:
         prompt += f" 请控制改写后的字数在 {target_word_count} 字左右，可以适当浮动 ±10%。"
 
+    persona_ctx = get_persona_context(user_id)
+    system = "你是一个专业自媒体文案改写助手。"
+    if persona_ctx:
+        system += f" 请严格遵循以下创作者风格：\n{persona_ctx}"
+
     response = _get_client().chat.completions.create(
         model="qwen-plus",
         messages=[
-            {"role": "system", "content": "你是一个专业自媒体文案改写助手，擅长在不改变核心意思的前提下优化文案表达。"},
+            {"role": "system", "content": system},
             {"role": "user", "content": f"{prompt}\n\n原文案：\n{text}"},
         ],
         temperature=0.8,
@@ -175,8 +233,8 @@ def extract_keywords_and_mood(text: str) -> dict:
     return result
 
 
-def plan_visual_materials(text: str) -> dict:
-    """AI导演分镜：吃透全文→规划每个视觉段落的素材方案
+def plan_visual_materials(text: str, user_id: int = None) -> dict:
+    """AI导演分镜：吃透全文→规划每个视觉段落的素材方案（注入人设风格）
 
     返回:
     {
@@ -200,10 +258,16 @@ def plan_visual_materials(text: str) -> dict:
     if cached:
         return json.loads(cached)
 
+    persona_ctx = get_persona_context(user_id)
+    director_system = """你是视频导演。请仔细阅读口播文案，理解主题、情绪和叙事结构，然后为文案规划视觉素材方案。"""
+
+    if persona_ctx:
+        director_system += f"\n\n创作者风格（视觉素材要匹配此风格）：\n{persona_ctx}"
+
     response = _get_client().chat.completions.create(
         model="qwen-plus",
         messages=[
-            {"role": "system", "content": """你是视频导演。请仔细阅读口播文案，理解主题、情绪和叙事结构，然后为文案规划视觉素材方案。
+            {"role": "system", "content": director_system + """
 
 步骤：
 1. 先通读全文，理解：这是什么主题？什么年代/场景？有哪些核心视觉元素？情绪的起承转合？

@@ -6,10 +6,11 @@ from pydantic import BaseModel
 
 class RewriteRequest(BaseModel):
     original_text: str
-    style: str = "similar"  # similar / original / aggressive
+    style: str = "similar"
     topic_id: Optional[int] = None
     source_url: Optional[str] = None
     target_word_count: Optional[int] = None
+    user_id: Optional[int] = None
 
 
 class ScrapeRequest(BaseModel):

@@ -71,7 +71,16 @@ _user_keys = threading.local()
 async def user_keys_middleware(request, call_next):
     _user_keys.dashscope = request.headers.get("X-DashScope-Key", "") or os.getenv("DASHSCOPE_API_KEY", "")
     _user_keys.siliconflow = request.headers.get("X-SiliconFlow-Key", "") or os.getenv("SILICONFLOW_API_KEY", "")
+    _user_keys.user_id = request.headers.get("X-User-Id", "")
     return await call_next(request)
+
+def get_current_user_id() -> int | None:
+    """获取当前请求的用户ID"""
+    uid = getattr(_user_keys, 'user_id', '')
+    try:
+        return int(uid) if uid else None
+    except Exception:
+        return None
 
 def get_user_key(service: str) -> str:
     """服务层调用此函数获取当前请求用户的API Key"""
