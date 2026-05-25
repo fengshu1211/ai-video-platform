@@ -23,6 +23,8 @@ export default function VideoPage() {
   const [libraryOpen, setLibraryOpen] = useState(false)
   const [libraryFiles, setLibraryFiles] = useState<any[]>([])
   const [selectedLib, setSelectedLib] = useState<string[]>([])
+  const [templates, setTemplates] = useState<any[]>([])
+  const [applyingTemplate, setApplyingTemplate] = useState<string | null>(null)
   const [form] = Form.useForm()
 
   const loadData = () => {
@@ -30,7 +32,32 @@ export default function VideoPage() {
       videoApi.list().then(setProjects),
       contentApi.scripts().then(setScripts),
       voiceApi.profiles().then(setVoices),
+      fetch('/api/templates/projects').then(r => r.json()).then(d => setTemplates(d.templates || [])),
     ]).catch(() => message.error('加载数据失败'))
+  }
+
+  const applyTemplate = async (templateId: string) => {
+    setApplyingTemplate(templateId)
+    try {
+      const res = await fetch(`/api/templates/projects/${templateId}/apply`)
+      const data = await res.json()
+      if (!res.ok) { message.error('获取模板失败'); return }
+      const tmpl = data.template
+      // Create project from template
+      const createRes = await videoApi.create({
+        title: tmpl.title,
+        script_text: tmpl.script_text,
+        voice_id: voices.find(v => v.voice_id === tmpl.voice_id)?.id || voices[0]?.id,
+        aspect_ratio: tmpl.aspect_ratio,
+        subtitle_enabled: tmpl.subtitle_enabled,
+        image_animation_type: tmpl.image_animation_type,
+      })
+      if (createRes) {
+        message.success(`已创建「${tmpl.title}」，点击生成即可`)
+        loadData()
+      }
+    } catch { message.error('应用模板失败') }
+    setApplyingTemplate(null)
   }
 
   useEffect(() => { loadData() }, [])
@@ -202,6 +229,29 @@ export default function VideoPage() {
         showIcon
         style={{ marginBottom: 16 }}
       />
+
+      {/* 成品模板 */}
+      {templates.length > 0 && (
+        <Card size="small" title="成品模板（一键创建）" style={{ marginBottom: 16, borderRadius: 12 }}>
+          <div style={{ display: ‘flex’, gap: 12, overflowX: ‘auto’, paddingBottom: 4 }}>
+            {templates.map((t: any) => (
+              <Card
+                key={t.id}
+                size="small"
+                hoverable
+                style={{ minWidth: 200, borderRadius: 10, border: ‘1px solid rgba(148,163,184,0.08)’ }}
+                onClick={() => applyTemplate(t.id)}
+                loading={applyingTemplate === t.id}
+              >
+                <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 4 }}>{t.title}</div>
+                <div style={{ fontSize: 12, color: ‘#94a3b8’, marginBottom: 6 }}>{t.desc}</div>
+                <Tag color="blue" style={{ fontSize: 11 }}>{t.category}</Tag>
+                <Tag color="green" style={{ fontSize: 11 }}>一键创建</Tag>
+              </Card>
+            ))}
+          </div>
+        </Card>
+      )}
 
       <Table
         columns={columns}
