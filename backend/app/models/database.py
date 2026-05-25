@@ -71,7 +71,8 @@ class UserPersona(Base):
     __tablename__ = "user_personas"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    user_id = Column(Integer, ForeignKey("users.id"), unique=True)
+    user_id = Column(Integer, ForeignKey("users.id"))
+    name = Column(String(100), default="未命名")
     industry = Column(String(100))
     role = Column(String(100))
     personality = Column(Text)

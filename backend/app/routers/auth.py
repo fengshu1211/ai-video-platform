@@ -26,12 +26,14 @@ class LoginReq(BaseModel):
 
 
 class PersonaReq(BaseModel):
-    industry: str = ""       # 行业
-    role: str = ""           # 角色/职位
-    personality: str = ""    # 性格特征
-    hobbies: str = ""        # 兴趣爱好
-    content_style: str = ""  # 内容风格偏好
-    target_audience: str = ""  # 目标受众
+    persona_id: int = 0      # 0=新建，>0=更新
+    name: str = ""           # 人设名称（如：主业、副业）
+    industry: str = ""
+    role: str = ""
+    personality: str = ""
+    hobbies: str = ""
+    content_style: str = ""
+    target_audience: str = ""
 
 
 # ── 注册 ──
@@ -64,24 +66,31 @@ def login(data: LoginReq, db: Session = Depends(get_db)):
             "display_name": user.display_name}
 
 
-# ── 人设分析 ──
+# ── 人设管理（最多3个）──
 @router.post("/persona")
 def save_persona(data: PersonaReq, user_id: int, db: Session = Depends(get_db)):
-    """保存用户人设，AI分析生成风格模板"""
-    persona = db.query(UserPersona).filter(UserPersona.user_id == user_id).first()
-    if not persona:
+    """保存/更新用户人设，AI分析生成风格模板"""
+    if data.persona_id:
+        persona = db.query(UserPersona).filter(UserPersona.id == data.persona_id, UserPersona.user_id == user_id).first()
+        if not persona:
+            raise HTTPException(404, "人设不存在")
+    else:
+        count = db.query(UserPersona).filter(UserPersona.user_id == user_id).count()
+        if count >= 3:
+            raise HTTPException(400, "最多创建3个人设")
         persona = UserPersona(user_id=user_id)
         db.add(persona)
 
-    persona.industry = data.industry
+    persona.industry = data.industry or persona.industry if hasattr(persona, 'industry') else data.industry
     persona.role = data.role
     persona.personality = data.personality
     persona.hobbies = data.hobbies
     persona.content_style = data.content_style
     persona.target_audience = data.target_audience
+    if data.name:
+        persona.name = data.name
     persona.updated_at = datetime.now()
 
-    # AI分析
     try:
         from app.services.ai_service import analyze_persona_style
         result = analyze_persona_style(data.model_dump())
@@ -89,36 +98,31 @@ def save_persona(data: PersonaReq, user_id: int, db: Session = Depends(get_db)):
         persona.ai_keywords = json.dumps(result.get("keywords", []), ensure_ascii=False)
     except Exception as e:
         print(f"Persona AI analysis failed: {e}")
-        persona.ai_style_template = json.dumps({"error": str(e)}, ensure_ascii=False)
 
     db.commit()
     db.refresh(persona)
-
-    return {
-        "code": 0,
-        "message": "人设保存成功",
-        "persona": {
-            "industry": persona.industry,
-            "role": persona.role,
-            "style_template": json.loads(persona.ai_style_template or "{}"),
-            "keywords": json.loads(persona.ai_keywords or "[]"),
-        },
-    }
+    return {"code": 0, "message": "人设保存成功", "persona_id": persona.id,
+            "style_template": json.loads(persona.ai_style_template or "{}")}
 
 
 @router.get("/persona")
-def get_persona(user_id: int, db: Session = Depends(get_db)):
-    persona = db.query(UserPersona).filter(UserPersona.user_id == user_id).first()
+def list_personas(user_id: int, db: Session = Depends(get_db)):
+    personas = db.query(UserPersona).filter(UserPersona.user_id == user_id).all()
+    return {"code": 0, "personas": [{
+        "id": p.id, "name": getattr(p, 'name', '未命名'),
+        "industry": p.industry, "role": p.role,
+        "personality": p.personality, "hobbies": p.hobbies,
+        "content_style": p.content_style, "target_audience": p.target_audience,
+        "style_template": json.loads(p.ai_style_template or "{}"),
+        "keywords": json.loads(p.ai_keywords or "[]"),
+    } for p in personas]}
+
+
+@router.delete("/persona/{persona_id}")
+def delete_persona(persona_id: int, user_id: int, db: Session = Depends(get_db)):
+    persona = db.query(UserPersona).filter(UserPersona.id == persona_id, UserPersona.user_id == user_id).first()
     if not persona:
-        return {"code": 0, "persona": None}
-    return {
-        "code": 0,
-        "persona": {
-            "industry": persona.industry, "role": persona.role,
-            "personality": persona.personality, "hobbies": persona.hobbies,
-            "content_style": persona.content_style,
-            "target_audience": persona.target_audience,
-            "style_template": json.loads(persona.ai_style_template or "{}"),
-            "keywords": json.loads(persona.ai_keywords or "[]"),
-        },
-    }
+        raise HTTPException(404, "人设不存在")
+    db.delete(persona)
+    db.commit()
+    return {"code": 0, "message": "已删除"}

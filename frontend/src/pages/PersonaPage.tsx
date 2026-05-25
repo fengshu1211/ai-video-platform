@@ -1,106 +1,142 @@
 import { useState, useEffect } from 'react'
-import { Card, Form, Input, Select, Button, message, Typography, Spin, Tag, Descriptions } from 'antd'
-import { UserOutlined, BulbOutlined, ThunderboltOutlined } from '@ant-design/icons'
+import { Card, Form, Input, Select, Button, message, Typography, Spin, Tag, Tabs, Popconfirm, Empty } from 'antd'
+import { UserOutlined, BulbOutlined, PlusOutlined, DeleteOutlined } from '@ant-design/icons'
 
-const { Title, Paragraph, Text } = Typography
+const { Title, Paragraph } = Typography
+
+interface Persona { id: number; name: string; industry: string; role: string; personality: string; hobbies: string; content_style: string; target_audience: string; style_template: any; keywords: string[] }
 
 interface Props { userId: number }
 
 export default function PersonaPage({ userId }: Props) {
   const [form] = Form.useForm()
-  const [loading, setLoading] = useState(false)
+  const [personas, setPersonas] = useState<Persona[]>([])
+  const [loading, setLoading] = useState(true)
   const [analyzing, setAnalyzing] = useState(false)
-  const [persona, setPersona] = useState<any>(null)
-  const [styleTemplate, setStyleTemplate] = useState<any>(null)
+  const [activeId, setActiveId] = useState<number | 'new'>('new')
 
-  useEffect(() => {
+  const loadPersonas = () => {
     fetch(`/api/auth/persona?user_id=${userId}`)
       .then(r => r.json())
       .then(d => {
-        if (d.persona) {
-          setPersona(d.persona)
-          form.setFieldsValue(d.persona)
-          if (d.persona.style_template && Object.keys(d.persona.style_template).length > 0) {
-            setStyleTemplate(d.persona.style_template)
-          }
-        }
+        setPersonas(d.personas || [])
+        if ((d.personas || []).length > 0 && activeId === 'new') setActiveId(d.personas[0].id)
       }).catch(() => {})
-  }, [userId])
+      .finally(() => setLoading(false))
+  }
+
+  useEffect(() => { loadPersonas() }, [userId])
+
+  const activePersona = personas.find(p => p.id === activeId)
 
   const handleSave = async (values: any) => {
     setAnalyzing(true)
+    const isNew = activeId === 'new'
     try {
       const res = await fetch(`/api/auth/persona?user_id=${userId}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(values),
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...values, persona_id: isNew ? 0 : activeId }),
       })
       const data = await res.json()
       if (res.ok) {
-        message.success('人设分析完成')
-        setPersona(values)
-        setStyleTemplate(data.persona?.style_template || null)
+        message.success(isNew ? '人设创建成功' : '保存成功')
+        loadPersonas()
+        if (isNew && data.persona_id) setActiveId(data.persona_id)
       } else {
-        message.error(data.detail || '保存失败')
+        message.error(data.detail || '保存失败，最多3个人设')
       }
-    } catch {
-      message.error('网络错误')
-    }
+    } catch { message.error('网络错误') }
     setAnalyzing(false)
   }
 
+  const handleDelete = async (id: number) => {
+    await fetch(`/api/auth/persona/${id}?user_id=${userId}`, { method: 'DELETE' })
+    message.success('已删除')
+    loadPersonas()
+    setActiveId('new')
+  }
+
+  const handleTabChange = (key: string) => {
+    if (key === 'new') { setActiveId('new'); form.resetFields() }
+    else {
+      const p = personas.find(p => p.id === Number(key))
+      if (p) { setActiveId(p.id); form.setFieldsValue(p) }
+    }
+  }
+
+  if (loading) return <Spin size="large" />
+
   return (
     <div style={{ maxWidth: 800 }}>
-      <Title level={4} style={{ color: '#e2e8f0' }}>
-        <UserOutlined style={{ marginRight: 8, color: '#3b82f6' }} />我的创作人设
-      </Title>
-      <Paragraph style={{ color: '#94a3b8', fontSize: 13, marginBottom: 24 }}>
-        填写你的行业、性格等特征，AI会分析并生成你的专属文案风格模板。之后改写文案时会自动参考。
-      </Paragraph>
-
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-        <Card size="small" title="基本信息" style={{ borderRadius: 12 }}>
-          <Form form={form} layout="vertical" onFinish={handleSave} size="large">
-            <Form.Item name="industry" label="行业"><Input placeholder="如：历史科普、家居装修、美食探店" /></Form.Item>
-            <Form.Item name="role" label="角色/职位"><Input placeholder="如：历史博主、设计师、厨师" /></Form.Item>
-            <Form.Item name="personality" label="性格特征"><Input placeholder="如：幽默风趣、严肃认真、亲和力强" /></Form.Item>
-            <Form.Item name="hobbies" label="兴趣爱好"><Input placeholder="如：读书、旅行、摄影" /></Form.Item>
-            <Form.Item name="content_style" label="内容风格偏好">
-              <Select placeholder="选择偏好风格" options={[
-                { label: '幽默口语化', value: '幽默口语化' }, { label: '沉稳专业风', value: '沉稳专业风' },
-                { label: '激情澎湃风', value: '激情澎湃风' }, { label: '娓娓道来', value: '娓娓道来' },
-                { label: '快节奏干货', value: '快节奏干货' }, { label: '故事叙事风', value: '故事叙事风' },
-              ]} />
-            </Form.Item>
-            <Form.Item name="target_audience" label="目标受众"><Input placeholder="如：25-40岁男性、装修业主、美食爱好者" /></Form.Item>
-            <Button type="primary" htmlType="submit" loading={analyzing} icon={<ThunderboltOutlined />} block style={{ borderRadius: 10 }}>
-              {analyzing ? 'AI分析中...' : '保存并AI分析'}
-            </Button>
-          </Form>
-        </Card>
-
-        <Card size="small" title={<span><BulbOutlined style={{ color: '#f59e0b' }} /> AI风格分析结果</span>} style={{ borderRadius: 12 }}>
-          {analyzing ? (
-            <div style={{ textAlign: 'center', padding: 40 }}><Spin size="large" /><div style={{ color: '#94a3b8', marginTop: 12 }}>AI正在分析你的人设...</div></div>
-          ) : styleTemplate && Object.keys(styleTemplate).length > 0 ? (
-            <div style={{ fontSize: 13 }}>
-              <div style={{ marginBottom: 12 }}><Tag color="blue">{styleTemplate.style_name}</Tag></div>
-              <Descriptions column={1} size="small" colon={false} labelStyle={{ color: '#94a3b8' }} contentStyle={{ color: '#e2e8f0' }}>
-                <Descriptions.Item label="语气">{styleTemplate.tone}</Descriptions.Item>
-                <Descriptions.Item label="句长">{styleTemplate.sentence_length}</Descriptions.Item>
-                <Descriptions.Item label="视频时长">{styleTemplate.ideal_video_duration}</Descriptions.Item>
-              </Descriptions>
-              <div style={{ marginTop: 8, color: '#94a3b8' }}>💡 创作建议</div>
-              <div style={{ padding: '8px 0', lineHeight: 1.8, whiteSpace: 'pre-wrap' }}>{styleTemplate.writing_tips}</div>
-              {styleTemplate.keywords && (
-                <div style={{ marginTop: 8 }}>{styleTemplate.keywords.map((k: string) => <Tag key={k} style={{ marginBottom: 4 }}>{k}</Tag>)}</div>
-              )}
-            </div>
-          ) : (
-            <div style={{ textAlign: 'center', padding: 40, color: '#64748b' }}>填写左侧信息后<br />点击"保存并AI分析"<br />查看你的专属风格模板</div>
-          )}
-        </Card>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+        <Title level={4} style={{ color: '#e2e8f0', margin: 0 }}><UserOutlined style={{ marginRight: 8, color: '#3b82f6' }} />我的创作人设</Title>
+        {personas.length < 3 && activeId !== 'new' && (
+          <Button icon={<PlusOutlined />} onClick={() => { setActiveId('new'); form.resetFields() }}>新建人设</Button>
+        )}
       </div>
+
+      {personas.length === 0 && activeId === 'new' ? (
+        <Card style={{ borderRadius: 14 }}>
+          <Empty description="还没有创作人设，请填写下方信息创建第一个" />
+        </Card>
+      ) : null}
+
+      {personas.length > 0 && (
+        <Tabs
+          activeKey={String(activeId)}
+          onChange={handleTabChange}
+          type="card"
+          style={{ marginBottom: 16 }}
+          items={[
+            ...personas.map(p => ({
+              key: String(p.id),
+              label: (
+                <span>
+                  {p.name || '未命名'}
+                  <Popconfirm title="确定删除？" onConfirm={() => handleDelete(p.id)}>
+                    <DeleteOutlined style={{ marginLeft: 8, fontSize: 11, color: '#94a3b8', cursor: 'pointer' }} />
+                  </Popconfirm>
+                </span>
+              ),
+            })),
+            ...(personas.length < 3 ? [{ key: 'new', label: <PlusOutlined /> }] : []),
+          ]}
+        />
+      )}
+
+      <Card size="small" title={activeId === 'new' ? '新建人设' : `编辑：${activePersona?.name || '未命名'}`} style={{ borderRadius: 14 }}>
+        <Form form={form} layout="vertical" onFinish={handleSave} size="large">
+          <Form.Item name="name" label="人设名称" initialValue="">
+            <Input placeholder="如：主业、副业、历史科普号" />
+          </Form.Item>
+          <Form.Item name="industry" label="行业"><Input placeholder="如：历史科普、家居装修、美食探店" /></Form.Item>
+          <Form.Item name="role" label="角色/职位"><Input placeholder="如：历史博主、设计师、厨师" /></Form.Item>
+          <Form.Item name="personality" label="性格特征"><Input placeholder="如：幽默风趣、严肃认真、亲和力强" /></Form.Item>
+          <Form.Item name="content_style" label="内容风格偏好">
+            <Select placeholder="选择偏好风格" options={[
+              { label: '幽默口语化', value: '幽默口语化' }, { label: '沉稳专业风', value: '沉稳专业风' },
+              { label: '激情澎湃风', value: '激情澎湃风' }, { label: '娓娓道来', value: '娓娓道来' },
+              { label: '快节奏干货', value: '快节奏干货' }, { label: '故事叙事风', value: '故事叙事风' },
+            ]} />
+          </Form.Item>
+          <Form.Item name="target_audience" label="目标受众"><Input placeholder="如：25-40岁男性、装修业主、美食爱好者" /></Form.Item>
+          <Button type="primary" htmlType="submit" loading={analyzing} icon={<BulbOutlined />} block style={{ borderRadius: 10 }}>
+            {analyzing ? 'AI分析中...' : '保存并AI分析'}
+          </Button>
+        </Form>
+      </Card>
+
+      {activePersona?.style_template && Object.keys(activePersona.style_template).length > 0 && (
+        <Card size="small" title={<span><BulbOutlined style={{ color: '#f59e0b' }} /> AI风格分析：{activePersona.style_template.style_name}</span>} style={{ borderRadius: 14, marginTop: 16 }}>
+          <div style={{ fontSize: 13, lineHeight: 2 }}>
+            <Tag color="blue">{activePersona.style_template.tone}</Tag>
+            <Tag>{activePersona.style_template.sentence_length}</Tag>
+            <Tag color="purple">{activePersona.style_template.ideal_video_duration}</Tag>
+            <div style={{ marginTop: 8, color: '#94a3b8' }}>💡 {activePersona.style_template.writing_tips}</div>
+            <div style={{ marginTop: 4 }}>{activePersona.keywords?.map((k: string) => <Tag key={k}>{k}</Tag>)}</div>
+          </div>
+        </Card>
+      )}
     </div>
   )
 }
