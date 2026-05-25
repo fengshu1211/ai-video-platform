@@ -40,17 +40,20 @@ export default function QuickStart() {
     const user = JSON.parse(localStorage.getItem('current_user') || '{}')
     if (!user.userId) { message.error('请先登录'); return }
 
-    // 创建人设
-    const personaData = { ...selected.persona, persona_id: 0 }
+    // 先查现有人设，有则更新第一个，无则新建
+    const existing = await fetch(`/api/auth/persona?user_id=${user.userId}`).then(r => r.json())
+    const pid = (existing.personas || []).length > 0 ? existing.personas[0].id : 0
+    const personaData = { ...selected.persona, persona_id: pid }
     const res = await fetch(`/api/auth/persona?user_id=${user.userId}`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(personaData),
     })
     if (res.ok) {
-      message.success(`已应用「${selected.name}」人设模板！`)
+      message.success(pid ? `已更新「${selected.name}」人设！` : `已创建「${selected.name}」人设！`)
       setStep(2)
     } else {
-      message.error('应用失败，请重试')
+      const err = await res.json()
+      message.error(err.detail || '应用失败')
     }
     setApplying(false)
   }
