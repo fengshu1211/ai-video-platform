@@ -184,7 +184,13 @@ export default function VideoPage() {
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
         <h2><VideoCameraOutlined style={{ color: '#722ed1', marginRight: 8 }} />视频生成</h2>
-        <Button type="primary" icon={<PlusOutlined />} onClick={() => setModalOpen(true)}>
+        <Button type="primary" icon={<PlusOutlined />} onClick={() => {
+          if (scripts.length === 0) {
+            message.warning('还没有文案，请先去「内容改写」创作文案')
+            return
+          }
+          setModalOpen(true)
+        }}>
           新建项目
         </Button>
       </div>
@@ -218,6 +224,11 @@ export default function VideoPage() {
               <Input placeholder="如：明清历史解说第一期" />
             </Form.Item>
             <Form.Item name="script_id" label="解说文案" rules={[{ required: true, message: '请选择文案' }]}>
+              {scripts.length === 0 ? (
+                <div style={{ padding: 12, background: 'rgba(245,158,11,0.1)', borderRadius: 8, fontSize: 13, color: '#fbbf24' }}>
+                  还没有文案。请先去 <a href="/content" style={{ color: '#60a5fa' }}>内容改写</a> 创作或导入文案，有了文案才能生成视频。
+                </div>
+              ) : (
               <Select
                 placeholder="选择已改写好的文案"
                 options={scripts.map((s) => ({
@@ -225,6 +236,7 @@ export default function VideoPage() {
                   value: s.id,
                 }))}
               />
+              )}
             </Form.Item>
             <Form.Item name="voice_id" label="配音">
               <Select
