@@ -12,6 +12,7 @@ import {
   SettingOutlined,
   LogoutOutlined,
   IdcardOutlined,
+  QuestionCircleOutlined,
 } from '@ant-design/icons'
 
 const { Sider, Content, Header } = Layout
@@ -100,9 +101,16 @@ export default function MainLayout({ user, onLogout }: { user?: any; onLogout?: 
             borderBottom: '1px solid rgba(148,163,184,0.08)',
             height: 56,
             lineHeight: '56px',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
           }}
         >
-          {menuItems.find(m => m.key === location.pathname)?.label || '工作台'}
+          <span>{menuItems.find(m => m.key === location.pathname)?.label || '工作台'}</span>
+          <Button type="link" icon={<QuestionCircleOutlined />} href="/使用说明书.html" target="_blank"
+            style={{ color: '#60a5fa', fontSize: 13 }}>
+            使用说明
+          </Button>
         </Header>
         <Content style={{ margin: 20 }}>
           <div

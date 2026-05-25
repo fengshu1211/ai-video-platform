@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>自媒体创作平台 — 使用说明书</title>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+body { font-family: 'PingFang SC','Microsoft YaHei',sans-serif; background:#0f172a; color:#e2e8f0; line-height:1.8; }
+.container { max-width:800px; margin:0 auto; padding:40px 20px; }
+h1 { font-size:2em; text-align:center; margin-bottom:8px; background:linear-gradient(135deg,#60a5fa,#a78bfa); -webkit-background-clip:text; -webkit-text-fill-color:transparent; }
+.subtitle { text-align:center; color:#64748b; margin-bottom:40px; font-size:14px; }
+h2 { font-size:1.3em; color:#60a5fa; margin:32px 0 12px; padding-bottom:8px; border-bottom:1px solid rgba(148,163,184,0.1); }
+h3 { font-size:1.1em; color:#e2e8f0; margin:20px 0 8px; }
+p { margin:8px 0; color:#94a3b8; }
+.step { background:rgba(30,41,59,0.5); border:1px solid rgba(148,163,184,0.08); border-radius:12px; padding:16px 20px; margin:12px 0; }
+.step .num { display:inline-block; width:24px; height:24px; background:#3b82f6; border-radius:50%; text-align:center; line-height:24px; font-size:13px; font-weight:700; margin-right:8px; }
+.tip { background:rgba(245,158,11,0.1); border-left:3px solid #f59e0b; padding:12px 16px; border-radius:0 8px 8px 0; margin:12px 0; font-size:13px; color:#fbbf24; }
+.warn { background:rgba(239,68,68,0.1); border-left:3px solid #ef4444; padding:12px 16px; border-radius:0 8px 8px 0; margin:12px 0; font-size:13px; color:#fca5a5; }
+code { background:rgba(59,130,246,0.15); color:#60a5fa; padding:2px 8px; border-radius:4px; font-size:13px; }
+table { width:100%; border-collapse:collapse; margin:12px 0; }
+th,td { border:1px solid rgba(148,163,184,0.1); padding:10px 14px; text-align:left; font-size:13px; }
+th { background:rgba(30,41,59,0.6); color:#e2e8f0; }
+td { color:#94a3b8; }
+.faq dt { font-weight:600; color:#e2e8f0; margin-top:16px; }
+.faq dd { color:#94a3b8; margin-left:0; margin-top:4px; }
+.menu { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:32px; }
+.menu a { padding:6px 16px; border-radius:20px; background:rgba(30,41,59,0.5); color:#94a3b8; text-decoration:none; font-size:13px; border:1px solid rgba(148,163,184,0.08); }
+.menu a:hover { color:#e2e8f0; border-color:#3b82f6; }
+</style>
+</head>
+<body>
+<div class="container">
+
+<h1>自媒体创作平台</h1>
+<p class="subtitle">零基础也能用 · 5分钟上手 · 全免费</p>
+
+<div class="menu">
+  <a href="#register">注册登录</a>
+  <a href="#persona">设置人设</a>
+  <a href="#script">写文案</a>
+  <a href="#video">生成视频</a>
+  <a href="#voice">语音系统</a>
+  <a href="#settings">设置Key</a>
+  <a href="#faq">常见问题</a>
+</div>
+
+<!-- ===== 注册登录 ===== -->
+<h2 id="register">一、注册登录</h2>
+<p>打开网址（手机或电脑浏览器都行），首次使用会自动跳转登录页。</p>
+
+<div class="step"><span class="num">1</span> 输入<b>手机号</b>（11位）和<b>密码</b>（至少4位），点"注册"</div>
+<div class="step"><span class="num">2</span> 注册成功后会自动登录，进入工作台首页</div>
+<div class="step"><span class="num">3</span> 下次打开直接点"登录"输入手机号和密码即可</div>
+
+<div class="tip">密码忘记了目前没有找回功能，建议用简单好记的密码。后续会加上短信验证码找回。</div>
+
+<!-- ===== 设置人设 ===== -->
+<h2 id="persona">二、设置我的创作人设</h2>
+<p>这是最重要的一步——AI会根据你的人设自动调整文案风格。左侧菜单点"<b>我的创作人设</b>"。</p>
+
+<div class="step"><span class="num">1</span> 填写你的<b>人设名称</b>（如：主业、副业、历史科普号）</div>
+<div class="step"><span class="num">2</span> 填写<b>行业</b>（如：历史科普、家居装修、美食探店）</div>
+<div class="step"><span class="num">3</span> 填写<b>角色/职位</b>（如：历史博主、设计师、厨师）</div>
+<div class="step"><span class="num">4</span> 填写<b>性格特征</b>（如：幽默风趣、亲和力强）</div>
+<div class="step"><span class="num">5</span> 选择<b>内容风格偏好</b>和<b>目标受众</b></div>
+<div class="step"><span class="num">6</span> 点击"<b>保存并AI分析</b>"，AI会生成专属风格模板</div>
+
+<div class="tip">一个人最多创建<b>3个人设</b>，比如主业+副业分开。不同人设在生成视频时可以分别选择。</div>
+
+<!-- ===== 写文案 ===== -->
+<h2 id="script">三、内容改写（获取文案）</h2>
+<p>左侧菜单点"<b>内容改写</b>"。</p>
+
+<div class="step"><span class="num">1</span> <b>粘贴原文</b>——把你要做成视频的文案粘贴到大文本框里</div>
+<div class="step"><span class="num">2</span> 选择<b>改写风格</b>：相似改写 / 创意改写 / 激进改写</div>
+<div class="step"><span class="num">3</span> 点"<b>AI改写</b>"，几秒钟后右边会显示改写结果</div>
+<div class="step"><span class="num">4</span> 也可以<b>生成爆款标题</b>——点"生成标题"，AI会给你5个吸睛标题</div>
+<div class="step"><span class="num">5</span> 还可以<b>粘贴链接</b>（B站/公众号文章），提取原文</div>
+
+<div class="warn">文案不要超过2000字，太长会影响生成速度和质量。</div>
+
+<!-- ===== 生成视频 ===== -->
+<h2 id="video">四、生成视频（核心功能）</h2>
+<p>左侧菜单点"<b>视频生成</b>"，点右上角"<b>新建项目</b>"。</p>
+
+<h3>4.1 创建项目</h3>
+<div class="step"><span class="num">1</span> <b>项目名称</b>：随便起，方便自己识别就行</div>
+<div class="step"><span class="num">2</span> <b>选择文案</b>：选一条之前改写好的文案</div>
+<div class="step"><span class="num">3</span> <b>选择语音</b>：选一个音色（男声/女声/你自己的克隆声音）</div>
+<div class="step"><span class="num">4</span> <b>视频模式</b>（重要）：</div>
+
+<table>
+  <tr><th>模式</th><th>适用场景</th><th>说明</th></tr>
+  <tr><td>🖼️ 图文解说</td><td>不露脸，推荐</td><td>系统自动搜图+镜头动画+字幕，最常用</td></tr>
+  <tr><td>🎤 露脸口播</td><td>有自拍视频</td><td>上传一段自己说话的素材，自动对齐嘴型</td></tr>
+  <tr><td>🗣️ 数字人</td><td>需GPU</td><td>上传一张照片，AI让照片开口说话</td></tr>
+</table>
+
+<div class="step"><span class="num">5</span> 点"<b>确定</b>"创建项目</div>
+
+<h3>4.2 生成视频</h3>
+<div class="step"><span class="num">1</span> 在项目列表找到刚创建的项目，点"<b>生成</b>"按钮</div>
+<div class="step"><span class="num">2</span> 等待<b>2-4分钟</b>（系统在自动搜图→配音→合成→加字幕）</div>
+<div class="step"><span class="num">3</span> 生成完成后状态变为"已完成"，点"<b>播放</b>"查看视频</div>
+
+<div class="tip">素材不用上传——AI导演会自动分析文案，全网搜索匹配的图片素材。不放心的话也可以自己上传。</div>
+
+<!-- ===== 语音系统 ===== -->
+<h2 id="voice">五、语音系统</h2>
+<p>左侧菜单点"<b>语音系统</b>"。</p>
+
+<h3>5.1 使用预设语音</h3>
+<p>系统内置6个免费中文音色：晓晓（少女）、晓伊（知性女）、云希（温暖男）、云健（沉稳男）、云扬（新闻播报）、云夏（亲切男）。</p>
+<p>点"<b>试听</b>"可以听到效果。</p>
+
+<h3>5.2 上传自己的声音（语音复刻）</h3>
+<div class="step"><span class="num">1</span> 录一段<b>至少10秒</b>的音频（用手机录就行，MP3格式）</div>
+<div class="step"><span class="num">2</span> 点"<b>上传自定义语音</b>"，选择文件，填名字</div>
+<div class="step"><span class="num">3</span> 上传后AI会复刻你的声音，之后生成视频就可以选自己的声音了</div>
+<div class="step"><span class="num">4</span> 点"<b>试听</b>"检查效果</div>
+
+<div class="warn">录音时环境要安静，说话清晰。至少10秒，越长越像。</div>
+
+<!-- ===== 设置Key ===== -->
+<h2 id="settings">六、系统设置（API Key）</h2>
+<p>左侧菜单底部点"<b>系统设置</b>"。默认已配好共享Key，一般不用管。</p>
+<p>如果提示额度不足，需要填自己的Key：</p>
+
+<table>
+  <tr><th>服务</th><th>用途</th><th>获取地址</th><th>费用</th></tr>
+  <tr><td>通义千问</td><td>AI改写文案</td><td>dashscope.console.aliyun.com</td><td>新用户免费</td></tr>
+  <tr><td>硅基流动</td><td>AI语音复刻</td><td>cloud.siliconflow.cn</td><td>新用户免费</td></tr>
+</table>
+
+<div class="tip">Key存在本地浏览器，不会上传。换个设备需要重新填。</div>
+
+<!-- ===== 素材库 ===== -->
+<h2 id="materials">七、素材库</h2>
+<p>左侧菜单点"<b>素材库</b>"，可以上传自己的图片和视频素材。</p>
+<p>上传后自动按"人物/产品/场景/素材"分类。也可以从素材库直接下载Pexels上的免费图片。</p>
+
+<!-- ===== 常见问题 ===== -->
+<h2 id="faq">八、常见问题</h2>
+<dl class="faq">
+
+<dt>Q：生成一个视频要多久？</dt>
+<dd>A：一般2-4分钟。取决于视频时长和网络速度。</dd>
+
+<dt>Q：视频为什么是竖屏？</dt>
+<dd>A：默认9:16竖屏（手机全屏），适合抖音/视频号/小红书。也可以在创建项目时改成16:9横屏。</dd>
+
+<dt>Q：字幕位置不对/颜色不好看？</dt>
+<dd>A：目前是白字+黑边，位置在画面中下部。后续会支持自定义字体和位置。</dd>
+
+<dt>Q：视频可以加BGM吗？</dt>
+<dd>A：目前需要自己上传背景音乐文件。后续会支持自动配乐。</dd>
+
+<dt>Q：手机能用吗？</dt>
+<dd>A：能。电脑和手机打开同一个网址就行。手机浏览器菜单可以"添加到桌面"，像APP一样用。</dd>
+
+<dt>Q：需要下载安装什么吗？</dt>
+<dd>A：不需要。浏览器打开网址就能用，啥都不用装。</dd>
+
+<dt>Q：免费吗？</dt>
+<dd>A：完全免费。语音用Edge-TTS（微软免费），图片搜Pexels（免费），AI改写用通义千问（新用户免费额度）。</dd>
+
+<dt>Q：数据安全吗？</dt>
+<dd>A：每15天自动备份到阿里云OSS。你的手机号只用于登录，不会外泄。</dd>
+
+</dl>
+
+<p style="text-align:center; color:#64748b; margin-top:48px; font-size:13px;">版本 v1.0 · 2026年5月</p>
+</div>
+</body>
+</html>
