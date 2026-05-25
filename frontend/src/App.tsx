@@ -12,6 +12,7 @@ import MaterialLibraryPage from './pages/MaterialLibraryPage'
 import VideoLibraryPage from './pages/VideoLibraryPage'
 import SettingsPage from './pages/SettingsPage'
 import PersonaPage from './pages/PersonaPage'
+import QuickStart from './pages/QuickStart'
 import SetupWizard from './components/SetupWizard'
 import LoginPage from './pages/LoginPage'
 
@@ -64,6 +65,7 @@ function AppContent() {
             <Route path="library" element={<VideoLibraryPage />} />
             <Route path="settings" element={<SettingsPage />} />
             <Route path="persona" element={<PersonaPage userId={user.userId} />} />
+            <Route path="quickstart" element={<QuickStart />} />
           </Route>
         </Routes>
       </BrowserRouter>

@@ -9,7 +9,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, JSONResponse
 from app.config import CORS_ORIGINS
 from app.models.database import init_db
-from app.routers import topics, content, voice, video, tasks, upload, materials, auth, userdata
+from app.routers import topics, content, voice, video, tasks, upload, materials, auth, userdata, templates
 
 FRONTEND_DIR = Path(__file__).resolve().parent.parent.parent / "frontend" / "dist"
 
@@ -95,6 +95,7 @@ app.include_router(upload.router)
 app.include_router(materials.router)
 app.include_router(auth.router)
 app.include_router(userdata.router)
+app.include_router(templates.router)
 
 # 托管前端静态文件 + 上传文件
 if FRONTEND_DIR.exists():

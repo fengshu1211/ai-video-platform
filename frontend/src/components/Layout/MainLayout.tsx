@@ -13,12 +13,14 @@ import {
   LogoutOutlined,
   IdcardOutlined,
   QuestionCircleOutlined,
+  ThunderboltOutlined,
 } from '@ant-design/icons'
 
 const { Sider, Content, Header } = Layout
 
 const menuItems = [
   { key: '/', icon: <DashboardOutlined />, label: '工作台' },
+  { key: '/quickstart', icon: <ThunderboltOutlined />, label: '快速上手' },
   { key: '/persona', icon: <IdcardOutlined />, label: '我的创作人设' },
   { key: '/topics', icon: <FireOutlined />, label: '爆款选题' },
   { key: '/content', icon: <EditOutlined />, label: '内容改写' },
