@@ -1,4 +1,4 @@
-"""新手模板——人设预设 + 示例文案"""
+"""新手模板 - persona presets and sample scripts"""
 from fastapi import APIRouter
 
 router = APIRouter(prefix="/api/templates", tags=["templates"])
@@ -6,92 +6,82 @@ router = APIRouter(prefix="/api/templates", tags=["templates"])
 PERSONA_TEMPLATES = [
     {
         "id": "history",
-        "name": "历史博主",
-        "icon": "🏛️",
+        "name": "History Blogger",
+        "icon": "temple",
         "persona": {
-            "name": "历史科普号",
-            "industry": "历史科普",
-            "role": "历史博主",
-            "personality": "幽默风趣，擅长用大白话讲历史",
-            "content_style": "故事叙事风",
-            "target_audience": "25-45岁历史爱好者",
+            "name": "History Channel",
+            "industry": "History & Archaeology",
+            "specialization": "",
+            "brand_name": "",
+            "role": "History Content Creator",
+            "personality": "Humorous, storytelling style",
+            "features": "",
+            "content_style": "story",
+            "target_audience": "History enthusiasts 25-45",
         },
         "scripts": [
-            {
-                "title": "秦始皇陵地宫揭秘",
-                "text": "你敢相信吗？秦始皇陵地宫，从来就不是史书里描写的"水银成川、机括如林"，而是一座仍在呼吸的地下星穹！一张刚刚浮出水面的高精度三维激光测绘影像，首次揭开地宫真容：它并非按常规墓制向下深掘，而是以九层宫阙的形态向上堆叠。封土之下76米，量子磁力梯度仪捕捉到异常环形结构与多重密闭空间。这不是传说，是考古学等了几十年的答案。",
-                "duration": "约90秒",
-            },
-            {
-                "title": "赤壁之战真相",
-                "text": "赤壁之战，火烧连环船——这个故事你一定听过。但真相是：曹操的八十万大军根本不存在，那场大火可能也不是诸葛亮借来的东风。2024年最新地理考古发现，赤壁古战场的实际位置和史书记载相差了整整40公里。今天我们来还原一个真实的三国战场。",
-                "duration": "约70秒",
-            },
+            {"title": "Emperor Qin's Underground Palace", "duration": "90s",
+             "text": "The Mausoleum of Qin Shi Huang was never the mercury-filled death trap of legend. New 3D laser scanning reveals a 9-tier palace stacked upward beneath the 76-meter mound, with quantum magnetometry detecting anomalous ring structures and sealed chambers. This is the answer archaeology has been waiting decades for."},
         ],
     },
     {
         "id": "home",
-        "name": "家居设计师",
-        "icon": "🏠",
+        "name": "Home Design",
+        "icon": "home",
         "persona": {
-            "name": "家居装修号",
-            "industry": "家居装修",
-            "role": "全屋定制设计师",
-            "personality": "专业严谨，用数据说话",
-            "content_style": "快节奏干货",
-            "target_audience": "25-40岁装修业主",
+            "name": "Home Renovation",
+            "industry": "Home Improvement & Interior Design",
+            "specialization": "",
+            "brand_name": "",
+            "role": "Interior Designer",
+            "personality": "Professional, data-driven",
+            "features": "",
+            "content_style": "fast_facts",
+            "target_audience": "Homeowners & renovators 25-40",
         },
         "scripts": [
-            {
-                "title": "全屋定制报价揭秘",
-                "text": "你以为花大价钱买的是高端定制，结果拆开一看——一块普普通通的欧松板，出厂价才37.8元，到了你家报价单上，摇身一变成了198元一平米！这中间飞走的160块，是木头？是工艺？还是品牌滤镜？今天我蹲点工厂、翻烂合同、扒了37家全屋定制的真实报价单，把每笔钱流向摊在你面前。",
-                "duration": "约75秒",
-            },
-            {
-                "title": "18平老破小改造",
-                "text": "18平米，一张单人床的面积，却住进了一对深圳打拼的年轻夫妻。不是将就，而是把老破小玩成了空间魔术！墙面翻下悬浮书桌，入夜收起变温软双人床。沙发掀开是37L储物舱，镜柜后藏着吹风机和发胶。他们没有买更大的房子，只是把每一寸空气都签了劳动合同。",
-                "duration": "约65秒",
-            },
+            {"title": "Custom Cabinetry Price Breakdown", "duration": "75s",
+             "text": "A plain OSB board costs 37.8 yuan from the factory. By the time it reaches your quotation sheet, it's 198 yuan per square meter. Where did that 160 yuan go? We visited factories, analyzed 37 real quotations, and traced every single cost."},
         ],
     },
     {
         "id": "food",
-        "name": "美食探店",
-        "icon": "🍜",
+        "name": "Food Reviews",
+        "icon": "utensils",
         "persona": {
-            "name": "美食探店号",
-            "industry": "美食探店",
-            "role": "美食博主",
-            "personality": "亲和力强，画面感十足",
-            "content_style": "幽默口语化",
-            "target_audience": "18-35岁美食爱好者",
+            "name": "Food Channel",
+            "industry": "Food & Dining",
+            "specialization": "",
+            "brand_name": "",
+            "role": "Food Blogger",
+            "personality": "Warm, vivid descriptions",
+            "features": "",
+            "content_style": "humorous",
+            "target_audience": "Food lovers 18-35",
         },
         "scripts": [
-            {
-                "title": "街边30年苍蝇馆子",
-                "text": "这条巷子我路过一百次，从来没注意到这家店——直到有一天，一个米其林大厨跟我说：你信不信，全城最好吃的回锅肉，藏在一个连招牌都没有的苍蝇馆子里。30年老店，老板是个67岁的婆婆，每天只炒30份。今天我带你去看看，什么叫真正的锅气。",
-                "duration": "约60秒",
-            },
+            {"title": "30-Year Hidden Gem Restaurant", "duration": "60s",
+             "text": "A Michelin chef once told me the best twice-cooked pork in town is hidden in an alley restaurant with no sign. 30 years old, run by a 67-year-old grandma who only cooks 30 portions a day. This is what real wok hei tastes like."},
         ],
     },
     {
         "id": "tech",
-        "name": "数码评测",
-        "icon": "💻",
+        "name": "Tech Reviews",
+        "icon": "laptop",
         "persona": {
-            "name": "数码评测号",
-            "industry": "科技数码",
-            "role": "数码博主",
-            "personality": "客观理性，参数党最爱",
-            "content_style": "快节奏干货",
-            "target_audience": "20-35岁数码爱好者",
+            "name": "Tech Channel",
+            "industry": "Technology & Gadgets",
+            "specialization": "",
+            "brand_name": "",
+            "role": "Tech Reviewer",
+            "personality": "Objective, data-focused",
+            "features": "",
+            "content_style": "fast_facts",
+            "target_audience": "Tech enthusiasts 20-35",
         },
         "scripts": [
-            {
-                "title": "两万八的显卡值不值",
-                "text": "朋友们，停！先别急着下单RTX5090——那张被黄牛炒到两万八、散热器重得像砖头的信仰神卡，可能真不是你今年最聪明的选择。我们把AMD RX7900XTX塞进旗舰平台，实测赛博朋克2077光追全开加FSR3帧生成，结果让人沉默。这不是勉强能用，这是真性能平权。",
-                "duration": "约80秒",
-            },
+            {"title": "Is the RTX5090 Worth 28000 Yuan?", "duration": "80s",
+             "text": "Stop before you click buy on that RTX5090 - the faith card inflated to 28000 yuan by scalpers. We benchmarked the RX7900XTX against it in Cyberpunk 2077 with full ray tracing and FSR3 frame gen. The results will surprise you."},
         ],
     },
 ]
@@ -111,4 +101,4 @@ def get_template(template_id: str):
     for t in PERSONA_TEMPLATES:
         if t["id"] == template_id:
             return {"code": 0, "template": t}
-    return {"code": 404, "message": "模板不存在"}
+    return {"code": 404, "message": "template not found"}
