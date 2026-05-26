@@ -3,6 +3,7 @@ import { Button, Image, message, Popconfirm, Upload, Card, Empty, Input, Tabs, C
 import {
   InboxOutlined, DeleteOutlined, PictureOutlined, SearchOutlined,
   DownloadOutlined, PlayCircleOutlined, AppstoreOutlined, UnorderedListOutlined,
+  ThunderboltOutlined,
 } from '@ant-design/icons'
 import { uploadApi } from '../services/api'
 
@@ -19,6 +20,8 @@ export default function MaterialLibraryPage() {
   const [selected, setSelected] = useState<string[]>([])
   const [viewMode, setViewMode] = useState<string>('grid')
   const [tab, setTab] = useState<string>('mine')
+  const [aiGenerating, setAiGenerating] = useState(false)
+  const [aiFiles, setAiFiles] = useState<any[]>([])
 
   const loadFiles = async () => {
     setLoading(true)
@@ -32,6 +35,24 @@ export default function MaterialLibraryPage() {
   }
 
   useEffect(() => { loadFiles() }, [])
+
+  const handleAiGenerate = async () => {
+    const user = JSON.parse(localStorage.getItem('current_user') || '{}')
+    if (!user.userId) { message.warning('请先登录'); return }
+    setAiGenerating(true)
+    try {
+      const res = await fetch(`/api/materials/generate-recommended?user_id=${user.userId}`, { method: 'POST' })
+      const data = await res.json()
+      if (data.code === 0) {
+        message.success(data.message)
+        setAiFiles(data.files || [])
+        loadFiles()
+      } else {
+        message.warning(data.message || '生成失败')
+      }
+    } catch { message.error('网络错误') }
+    setAiGenerating(false)
+  }
 
   const handleDelete = async (path: string) => {
     try { await uploadApi.deleteFile(path); message.success('已删除'); loadFiles() } catch { message.error('删除失败') }
@@ -137,6 +158,9 @@ export default function MaterialLibraryPage() {
               else if (info.file.status === 'error') message.error(`${info.file.name} 上传失败`)
             }}>
             <Button type=\"primary\" icon={<InboxOutlined />}>上传我的素材</Button>
+          <Button icon={<ThunderboltOutlined />} loading={aiGenerating} onClick={handleAiGenerate} style={{ borderColor: '#f59e0b', color: '#f59e0b' }}>
+            AI推荐素材
+          </Button>
           </Upload>
           {selected.length > 0 && (
             <Popconfirm title={`确定删除选中的${selected.length}个文件？`} onConfirm={batchDelete}>
