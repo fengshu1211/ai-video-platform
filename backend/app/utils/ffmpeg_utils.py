@@ -252,6 +252,40 @@ def audio_video_merge(video_path: Path, audio_path: Path, output_path: Path):
     ], check=True, timeout=300)
 
 
+def generate_virtual_host_clip(
+    image_path: Path,
+    output_path: Path,
+    duration: float,
+    width: int,
+    height: int,
+):
+    """虚拟主播：单张照片+微动呼吸感（缓慢zoom+微晃+亮度微变）"""
+    fps = 25
+    frames = max(int(duration * fps), 1)
+    # 极微小的zoom：1.0 → 1.02
+    zoom_step = 0.02 / frames
+    # 微小平移：模拟身体轻晃
+    pan_px = max(2, int(width * 0.01))
+    pan_step = pan_px * 2 / frames
+
+    vf = (
+        f"scale={width}:{height}:force_original_aspect_ratio=increase,"
+        f"crop={width}:{height},"
+        f"zoompan=z='1+{zoom_step:.6f}*on':"
+        f"x='iw/2-(iw/zoom/2)+{pan_step:.3f}*sin(on*0.05)':"
+        f"y='ih/2-(ih/zoom/2)':"
+        f"d=1:s={width}x{height}:fps={fps},"
+        f"eq=brightness=0.01*sin(on*0.08)"  # 亮度微变模拟呼吸
+    )
+    subprocess.run([
+        "ffmpeg", "-y", "-framerate", "25", "-loop", "1", "-i", str(image_path),
+        "-t", str(duration), "-an",
+        "-vf", f"{vf},fps=25,settb=1/25",
+        "-c:v", "libx264", "-preset", "medium", "-tune", "stillimage",
+        "-pix_fmt", "yuv420p", "-r", "25", str(output_path),
+    ], check=True, timeout=120)
+
+
 def generate_ken_burns_clip(
     image_path: Path,
     output_path: Path,

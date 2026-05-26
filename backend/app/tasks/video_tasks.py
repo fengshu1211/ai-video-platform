@@ -167,7 +167,7 @@ def _generate_video_impl(project_id: int, _celery_id: str = "", _db=None):
         if project.lip_sync_enabled:
             # 找上传的人脸素材（视频或照片）
             face_exts = ('.mp4', '.mov', '.avi', '.webm')
-            if project.lip_sync_mode == 'digital_human':
+            if project.lip_sync_mode in ('digital_human', 'virtual_host'):
                 face_exts = ('.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.mp4', '.mov', '.avi', '.webm')
             for mat in material_paths:
                 if mat.lower().endswith(face_exts):

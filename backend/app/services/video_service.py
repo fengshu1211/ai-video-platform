@@ -109,6 +109,21 @@ def generate_video(
             run(["ffmpeg","-y","-i",str(lip_path),"-an","-c:v","copy",str(muted)], check=True, timeout=30)
             lip_sync_video = str(muted.relative_to(muted.parent.parent))
             report(32, "音频替换完成")
+        elif lip_sync_mode == "virtual_host":
+            report(28, "正在生成虚拟主播...")
+            # 单张照片→微动呼吸感（免费，无需GPU）
+            lip_path_resolved = Path(lip_sync_video)
+            if not lip_path_resolved.is_absolute():
+                lip_path_resolved = OUTPUTS_DIR.parent / lip_sync_video
+            if lip_path_resolved.suffix.lower() in ('.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp'):
+                vh_output = OUTPUTS_DIR / f"virtualhost_{lip_path_resolved.stem}.mp4"
+                from app.utils.ffmpeg_utils import generate_virtual_host_clip
+                generate_virtual_host_clip(lip_path_resolved, vh_output, speech_duration, width, height)
+                lip_sync_video = str(vh_output.relative_to(vh_output.parent.parent))
+                report(32, "虚拟主播生成完成（免费）")
+            else:
+                report(32, "跳过：需要照片格式")
+
         elif lip_sync_mode == "digital_human":
             report(28, "正在生成数字人...")
             try:
