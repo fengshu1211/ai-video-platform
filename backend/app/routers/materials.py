@@ -33,11 +33,9 @@ def download_material(url: str, video_id: int):
         raise HTTPException(500, f"素材下载失败：{e}")
 
 
-@router.post("/generate-recommended")
-def generate_recommended(user_id: int):
-    """根据用户人设，用即梦AI生成推荐素材"""
-    import sqlite3, json, subprocess, time
-
+def _get_persona_prompts(user_id: int) -> tuple[list[str], str]:
+    """从人设提取AI生图关键词和风格"""
+    import sqlite3, json as _json
     db_path = str(UPLOADS_DIR.parent / "data.db")
     conn = sqlite3.connect(db_path)
     row = conn.execute(
@@ -45,20 +43,17 @@ def generate_recommended(user_id: int):
         (user_id,)
     ).fetchone()
     conn.close()
-
     if not row or not row[0]:
-        return {"code": 1, "message": "请先设置创作人设"}
+        return [], ""
 
-    keywords = json.loads(row[0]) if isinstance(row[0], str) else (row[0] or [])
+    keywords = _json.loads(row[0]) if isinstance(row[0], str) else (row[0] or [])
     industry = row[1] or ""
     spec = row[2] or ""
 
-    # 构建生图提示词
-    prompts = []
     style_map = {
         "历史": "historical documentary, ancient China, cinematic lighting, photorealistic, 8K",
-        "家居": "interior design, home renovation, modern Chinese style, natural light, photorealistic, 8K",
-        "科技": "tech product photography, clean background, studio lighting, 8K, photorealistic",
+        "家居": "interior design, home renovation, modern Chinese style, natural light, 8K",
+        "科技": "tech product photography, clean background, studio lighting, 8K",
         "美食": "food photography, Chinese cuisine, warm lighting, shallow depth of field, 8K",
     }
     base_style = ""
@@ -69,58 +64,97 @@ def generate_recommended(user_id: int):
     if not base_style:
         base_style = "photorealistic, cinematic lighting, 8K, high quality"
 
-    for kw in keywords[:5]:
-        prompt = f"{kw}, {base_style}"
-        prompts.append(prompt)
+    return keywords[:5], base_style
 
-    # 生图：本地Dreamina优先，服务器Pexels兜底
-    user_dir = UPLOADS_DIR / "user_materials" / str(user_id) / "AI推荐"
-    user_dir.mkdir(parents=True, exist_ok=True)
-    results = []
+
+def _gen_images(prompts: list[str], base_style: str, user_dir: Path, count: int) -> list[dict]:
+    """生成图片：Dreamina优先，Pexels兜底"""
+    import subprocess as _sp, json as _json, time as _time, httpx as _hx
     dreamina_path = "C:/Users/43453/bin/dreamina.exe"
     use_dreamina = Path(dreamina_path).exists()
+    results = []
 
-    for i, prompt in enumerate(prompts[:3]):
+    for i, kw in enumerate(prompts[:count]):
+        prompt = f"{kw}, {base_style}"
         try:
             if use_dreamina:
-                # 即梦AI生图（Windows本地）
-                r = subprocess.run([
-                    dreamina_path, "text2image", "--prompt", prompt[:200],
+                r = _sp.run([dreamina_path, "text2image", "--prompt", prompt[:200],
                     "--ratio", "9:16", "--resolution_type", "2k",
-                    "--model_version", "5.0", "--poll", "60",
-                ], capture_output=True, text=True, timeout=90)
-                data = json.loads(r.stdout)
+                    "--model_version", "5.0", "--poll", "60"],
+                    capture_output=True, text=True, timeout=90)
+                data = _json.loads(r.stdout)
                 if data.get("gen_status") == "success":
                     img_url = data["result_json"]["images"][0]["image_url"]
                 else:
                     continue
+                ext = ".png"
             else:
-                # 服务器兜底：Pexels搜图
                 from app.services.material_service import search_images
                 imgs = search_images(prompt[:80], per_page=1)
-                if imgs:
-                    img_url = imgs[0]["download_url"]
-                else:
+                if not imgs:
                     continue
+                img_url = imgs[0]["download_url"]
+                ext = ".jpg"
 
-            import httpx
-            resp = httpx.get(img_url, timeout=60)
+            resp = _hx.get(img_url, timeout=60)
             if resp.status_code == 200:
-                ext = ".png" if use_dreamina else ".jpg"
-                fname = f"ai_recommend_{i+1}{ext}"
+                fname = f"ai_{i+1}{ext}"
                 fpath = user_dir / fname
                 fpath.write_bytes(resp.content)
                 results.append({
-                    "name": f"{keywords[i] if i < len(keywords) else 'AI素材'}",
+                    "name": f"{kw}",
                     "filename": fname,
-                    "path": f"user_materials/{user_id}/AI推荐/{fname}",
+                    "path": str(fpath.relative_to(UPLOADS_DIR)),
                     "size": len(resp.content),
                 })
-            time.sleep(1)
+            _time.sleep(1)
         except Exception as e:
-            print(f"Image gen failed: {e}")
+            print(f"Image gen failed for {kw}: {e}")
+    return results
+
+
+@router.post("/generate-recommended")
+def generate_recommended(user_id: int):
+    """快速生成3张AI推荐素材"""
+    keywords, base_style = _get_persona_prompts(user_id)
+    if not keywords:
+        return {"code": 1, "message": "请先设置创作人设"}
+
+    user_dir = UPLOADS_DIR / "user_materials" / str(user_id) / "AI推荐"
+    user_dir.mkdir(parents=True, exist_ok=True)
+    results = _gen_images(keywords, base_style, user_dir, 3)
+
+    # 同步到平台存储
+    try:
+        from app.services.sync_service import auto_sync_material
+        for f in results:
+            auto_sync_material(user_id, f["path"], "AI推荐")
+    except Exception:
+        pass
 
     return {"code": 0, "message": f"已生成{len(results)}张素材", "files": results}
+
+
+@router.post("/pre-generate")
+def pre_generate(user_id: int):
+    """批量预生成10张AI素材（一次性配齐，同步到服务器）"""
+    keywords, base_style = _get_persona_prompts(user_id)
+    if not keywords:
+        return {"code": 1, "message": "请先设置创作人设"}
+
+    user_dir = UPLOADS_DIR / "user_materials" / str(user_id) / "AI推荐"
+    user_dir.mkdir(parents=True, exist_ok=True)
+    results = _gen_images(keywords, base_style, user_dir, 10)
+
+    # 同步到平台存储
+    try:
+        from app.services.sync_service import auto_sync_material
+        for f in results:
+            auto_sync_material(user_id, f["path"], "AI推荐")
+    except Exception:
+        pass
+
+    return {"code": 0, "message": f"预生成完成：{len(results)}张素材已同步", "files": results}
 
 
 @router.get("/presets")

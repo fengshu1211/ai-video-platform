@@ -36,12 +36,13 @@ export default function MaterialLibraryPage() {
 
   useEffect(() => { loadFiles() }, [])
 
-  const handleAiGenerate = async () => {
+  const handleAiGenerate = async (batch: boolean = false) => {
     const user = JSON.parse(localStorage.getItem('current_user') || '{}')
     if (!user.userId) { message.warning('请先登录'); return }
     setAiGenerating(true)
+    const endpoint = batch ? 'pre-generate' : 'generate-recommended'
     try {
-      const res = await fetch(`/api/materials/generate-recommended?user_id=${user.userId}`, { method: 'POST' })
+      const res = await fetch(`/api/materials/${endpoint}?user_id=${user.userId}`, { method: 'POST' })
       const data = await res.json()
       if (data.code === 0) {
         message.success(data.message)
@@ -158,8 +159,11 @@ export default function MaterialLibraryPage() {
               else if (info.file.status === 'error') message.error(`${info.file.name} 上传失败`)
             }}>
             <Button type=\"primary\" icon={<InboxOutlined />}>上传我的素材</Button>
-          <Button icon={<ThunderboltOutlined />} loading={aiGenerating} onClick={handleAiGenerate} style={{ borderColor: '#f59e0b', color: '#f59e0b' }}>
-            AI推荐素材
+          <Button icon={<ThunderboltOutlined />} loading={aiGenerating} onClick={() => handleAiGenerate(false)} style={{ borderColor: '#f59e0b', color: '#f59e0b' }}>
+            AI推荐(3张)
+          </Button>
+          <Button icon={<ThunderboltOutlined />} loading={aiGenerating} onClick={() => handleAiGenerate(true)} style={{ borderColor: '#10b981', color: '#10b981' }}>
+            批量预生成(10张)
           </Button>
           </Upload>
           {selected.length > 0 && (
