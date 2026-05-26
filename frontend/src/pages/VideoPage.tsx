@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useLocation } from 'react-router-dom'
-import { Table, Tag, Button, Modal, Form, Input, Select, message, Switch, Progress, Empty, Alert, Card, Upload, Image, Popconfirm } from 'antd'
+import { Table, Tag, Button, Modal, Form, Input, Select, message, Switch, Progress, Empty, Alert, Card, Upload, Image, Popconfirm, Steps } from 'antd'
 import {
   VideoCameraOutlined, PlusOutlined, PlayCircleOutlined, DeleteOutlined,
   ThunderboltOutlined, InboxOutlined, HeartOutlined, HeartFilled,
@@ -26,6 +26,7 @@ export default function VideoPage() {
   const [templates, setTemplates] = useState<any[]>([])
   const [applyingTemplate, setApplyingTemplate] = useState<string | null>(null)
   const [form] = Form.useForm()
+  const [wizardStep, setWizardStep] = useState(0)
 
   const loadData = () => {
     Promise.all([
@@ -263,171 +264,142 @@ export default function VideoPage() {
         locale={{ emptyText: <Empty description="暂无视频项目，点击右上角新建" /> }}
       />
 
-      <Modal
+            <Modal
         title="新建视频项目"
         open={modalOpen}
-        onOk={handleCreate}
-        onCancel={() => setModalOpen(false)}
-        width={560}
+        onCancel={() => { setModalOpen(false); setWizardStep(0) }}
+        footer={null}
+        width={600}
       >
+        <Steps current={wizardStep} size="small" style={{ marginBottom: 24 }}
+          items={[{ title: "基础信息" }, { title: "文案配音" }, { title: "视频模式" }, { title: "上传素材" }]} />
+
         <Form form={form} layout="vertical">
-          {/* ── 基础信息 ── */}
-          <Card size="small" title="📋 基础信息" style={{ marginBottom: 12 }}>
-            <Form.Item name="title" label="项目名称" rules={[{ required: true, message: '请输入项目名称' }]}>
-              <Input placeholder="如：明清历史解说第一期" />
-            </Form.Item>
-            <Form.Item name="script_id" label="解说文案" rules={[{ required: true, message: '请选择文案' }]}>
-              {scripts.length === 0 ? (
-                <div style={{ padding: 12, background: 'rgba(245,158,11,0.1)', borderRadius: 8, fontSize: 13, color: '#fbbf24' }}>
-                  还没有文案。请先去 <a href="/content" style={{ color: '#60a5fa' }}>内容改写</a> 创作或导入文案，有了文案才能生成视频。
-                </div>
-              ) : (
-              <Select
-                placeholder="选择已改写好的文案"
-                options={scripts.map((s) => ({
-                  label: (s.rewritten_text || s.original_text).slice(0, 50) + '...',
-                  value: s.id,
-                }))}
-              />
+          {wizardStep === 0 && (
+            <>
+              {templates.length > 0 && (
+                <Card size="small" title="成品模板（一键创建）" style={{ marginBottom: 16, borderRadius: 12 }}>
+                  <div style={{ display: "flex", gap: 12, overflowX: "auto", paddingBottom: 4 }}>
+                    {templates.map((t: any) => (
+                      <Card key={t.id} size="small" hoverable
+                        style={{ minWidth: 180, borderRadius: 10, border: "1px solid rgba(148,163,184,0.08)" }}
+                        onClick={() => applyTemplate(t.id)} loading={applyingTemplate === t.id}>
+                        <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 4 }}>{t.title}</div>
+                        <div style={{ fontSize: 12, color: "#94a3b8" }}>{t.desc}</div>
+                        <Tag color="green" style={{ fontSize: 11, marginTop: 4 }}>一键创建</Tag>
+                      </Card>
+                    ))}
+                  </div>
+                </Card>
               )}
-            </Form.Item>
-            <Form.Item name="voice_id" label="配音">
-              <Select
-                placeholder="选个声音"
-                allowClear
-                options={voices.map((v) => ({ label: v.name, value: v.id }))}
-              />
-            </Form.Item>
-          </Card>
-
-          {/* ── 视频模式（核心选择）── */}
-          <Card size="small" title="🎬 视频模式" style={{ marginBottom: 12 }}>
-            <Form.Item name="video_mode" label="你想做什么样的视频？" initialValue="image_animation">
-              <Select
-                options={[
-                  { label: '🖼️ 图文解说（图片+镜头动画，不露脸）', value: 'image_animation' },
-                  { label: '🎤 露脸口播（自拍视频自动调速对齐，免费）', value: 'auto_align' },
-                  { label: '🤖 AI虚拟主播（一张照片→呼吸感微动，免费）', value: 'virtual_host' },
-                  { label: '⏹️ 静态素材（无特效）', value: 'none' },
-                  { label: '── 以下需要GPU ──', value: '', disabled: true },
-                  { label: '🗣️ 数字人（一张照片→开口说话）', value: 'digital_human' },
-                  { label: '🎥 画中画口播（自拍视频缩小到角落）', value: 'lip_sync_pip' },
-                  { label: '🎬 全屏口播（自拍视频铺满全屏）', value: 'lip_sync_full' },
-                ]}
-              />
-            </Form.Item>
-            <Form.Item noStyle shouldUpdate={(prev, cur) => prev.video_mode !== cur.video_mode}>
-              {({ getFieldValue }) => {
-                const mode = getFieldValue('video_mode')
-                if (mode === 'image_animation') {
-                  return (
-                    <Form.Item name="animation_sub_type" label="镜头效果" initialValue="zoom_in">
-                      <Select options={[
-                        { label: '缓慢放大（纪录片感）', value: 'zoom_in' },
-                        { label: '缓慢缩小', value: 'zoom_out' },
-                        { label: '从左往右平移', value: 'pan_left' },
-                        { label: '从右往左平移', value: 'pan_right' },
-                        { label: '从下往上平移', value: 'pan_up' },
-                        { label: '从上往下平移', value: 'pan_down' },
-                      ]} />
-                    </Form.Item>
-                  )
-                }
-                if (mode === 'digital_human') {
-                  return (
-                    <div style={{ padding: 8, background: '#fff7e6', borderRadius: 4, fontSize: 12, color: '#d48806' }}>
-                      💡 上传素材时，第一张图会自动作为数字人照片使用
-                    </div>
-                  )
-                }
-                if (mode === 'lip_sync_pip' || mode === 'lip_sync_full') {
-                  return (
-                    <div style={{ padding: 8, background: '#fff7e6', borderRadius: 4, fontSize: 12, color: '#d48806' }}>
-                      💡 上传素材时，第一个视频会自动对口型
-                    </div>
-                  )
-                }
-                return null
-              }}
-            </Form.Item>
-            <Form.Item name="aspect_ratio" label="画面比例" initialValue="9:16">
-              <Select options={[
-                { label: '📱 竖版 9:16（抖音/快手）', value: '9:16' },
-                { label: '💻 横版 16:9（B站/YouTube）', value: '16:9' },
-                { label: '⬜ 方形 1:1（微信/小红书）', value: '1:1' },
-              ]} />
-            </Form.Item>
-          </Card>
-
-          {/* ── 素材上传 ── */}
-          <Card size="small" title="🖼️ 上传素材（强烈建议）" style={{ marginBottom: 12 }}>
-            <div style={{ fontSize: 12, color: '#fbbf24', marginBottom: 8 }}>
-              ⭐ 上传你自己的实拍照片/视频，视频才有专属风格。不传则自动搜图（匹配度有限）。
-            </div>
-            <Upload
-              multiple
-              accept=".jpg,.jpeg,.png,.gif,.bmp,.webp,.mp4,.mov,.avi,.webm,.mkv"
-              action="/api/upload/file?file_type=videos"
-              showUploadList={false}
-              onChange={(info: any) => {
-                if (info.file.status === 'done') {
-                  const resp = info.file.response
-                  const path = resp?.data?.path || resp?.path
-                  if (path) {
-                    setUploadedMaterials((p: string[]) => [path, ...p])
-                    message.success(`${info.file.name} 已上传`)
-                  }
-                } else if (info.file.status === 'error') {
-                  message.error(`${info.file.name} 上传失败`)
-                }
-              }}
-            >
-              <Button icon={<InboxOutlined />} size="small">本地上传</Button>
-            </Upload>
-            <Button size="small" style={{ marginLeft: 8 }} icon={<InboxOutlined />} onClick={async () => {
-              setLibraryOpen(true)
-              try {
-                const res: any = await uploadApi.listFiles()
-                const files = Array.isArray(res) ? res : (res.data || res.code !== undefined ? res.data : [])
-                setLibraryFiles(files)
-                if (files.length === 0) message.info('素材库为空')
-              } catch { message.error('加载素材库失败') }
-            }}>素材库</Button>
-            {uploadedMaterials.length > 0 && (
-              <div style={{ marginTop: 8 }}>
-                {uploadedMaterials.map((path, i) => (
-                  <Tag key={i} closable onClose={() => setUploadedMaterials((p: string[]) => p.filter((x: string) => x !== path))}
-                    style={{ marginBottom: 4 }}>
-                    {path.split('/').pop()}
-                  </Tag>
-                ))}
-              </div>
-            )}
-          </Card>
-
-          {/* ── 高级设置（默认折叠）── */}
-          <Card size="small" title="⚙️ 高级设置" style={{ marginBottom: 12 }}>
-            <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap' }}>
-              <Form.Item name="subtitle_enabled" label="自动生成字幕" initialValue={true} valuePropName="checked" style={{ marginBottom: 0 }}>
-                <Switch checkedChildren="开" unCheckedChildren="关" />
+              <Form.Item name="title" label="项目名称" rules={[{ required: true, message: "请输入" }]}>
+                <Input placeholder="如：明清历史解说第一期" size="large" />
               </Form.Item>
-              <Form.Item name="bgm_volume" label="背景音乐音量" initialValue={0.3} style={{ marginBottom: 0 }}>
-                <Select style={{ width: 120 }} options={[
-                  { label: '轻柔', value: 0.15 },
-                  { label: '适中', value: 0.3 },
-                  { label: '明显', value: 0.5 },
+              <Form.Item name="aspect_ratio" label="画面比例" initialValue="9:16">
+                <Select options={[
+                  { label: "9:16 竖版（手机全屏）", value: "9:16" },
+                  { label: "16:9 横版（电脑电视）", value: "16:9" },
+                  { label: "1:1 方形", value: "1:1" },
                 ]} />
               </Form.Item>
-            </div>
-          </Card>
+            </>
+          )}
 
-          <Alert
-            message="点击确定后生成视频，自动执行：AI导演分析 → 搜图匹配 → 语音合成 → 字幕生成"
-            type="info"
-            showIcon
-            style={{ fontSize: 12 }}
-          />
+          {wizardStep === 1 && (
+            <>
+              <Form.Item name="script_id" label="解说文案" rules={[{ required: true, message: "请选择" }]}>
+                {scripts.length === 0 ? (
+                  <div style={{ padding: 16, background: "rgba(245,158,11,0.1)", borderRadius: 8, fontSize: 13, color: "#fbbf24" }}>
+                    还没有文案。请先去 <a href="/content" style={{ color: "#60a5fa" }}>内容改写</a> 创作或导入文案。
+                  </div>
+                ) : (
+                  <Select placeholder="选择已改写好的文案" size="large"
+                    options={scripts.map((s) => ({ label: (s.rewritten_text || s.original_text).slice(0, 60) + "...", value: s.id }))} />
+                )}
+              </Form.Item>
+              <Form.Item name="voice_id" label="配音">
+                <Select placeholder="选个声音" allowClear size="large"
+                  options={voices.map((v) => ({ label: v.name, value: v.id }))} />
+              </Form.Item>
+              <Form.Item name="subtitle_enabled" label="自动生成字幕" initialValue={true} valuePropName="checked">
+                <Switch />
+              </Form.Item>
+            </>
+          )}
+
+          {wizardStep === 2 && (
+            <>
+              <Form.Item name="video_mode" label="你想做什么样的视频？" initialValue="image_animation">
+                <Select size="large" options={[
+                  { label: "🖼️ 图文解说（图片+镜头动画，不露脸）", value: "image_animation" },
+                  { label: "🎤 露脸口播（自拍视频自动调速对齐，免费）", value: "auto_align" },
+                  { label: "🤖 AI虚拟主播（一张照片→呼吸感微动，免费）", value: "virtual_host" },
+                  { label: "⏹️ 静态素材（无特效）", value: "none" },
+                  { label: "── 以下需要GPU ──", value: "", disabled: true },
+                  { label: "🗣️ 数字人（一张照片→开口说话）", value: "digital_human" },
+                  { label: "🎥 画中画口播（自拍视频缩小到角落）", value: "lip_sync_pip" },
+                  { label: "🎬 全屏口播（自拍视频铺满全屏）", value: "lip_sync_full" },
+                ]} />
+              </Form.Item>
+              <Form.Item noStyle shouldUpdate={(prev, cur) => prev.video_mode !== cur.video_mode}>
+                {({ getFieldValue }) => {
+                  const mode = getFieldValue("video_mode")
+                  if (mode === "image_animation") {
+                    return <Form.Item name="animation_sub_type" label="镜头效果" initialValue="zoom_in">
+                      <Select options={[
+                        { label: "缓慢放大", value: "zoom_in" }, { label: "缓慢缩小", value: "zoom_out" },
+                        { label: "左移", value: "pan_left" }, { label: "右移", value: "pan_right" },
+                        { label: "上移", value: "pan_up" }, { label: "下移", value: "pan_down" },
+                      ]} />
+                    </Form.Item>
+                  }
+                  return null
+                }}
+              </Form.Item>
+            </>
+          )}
+
+          {wizardStep === 3 && (
+            <Card size="small" title="上传素材（建议）" style={{ borderRadius: 12 }}>
+              <div style={{ fontSize: 12, color: "#fbbf24", marginBottom: 8 }}>
+                上传你自己的实拍照片/视频，视频才有专属风格。不传则自动搜图。
+              </div>
+              <Upload multiple accept=".jpg,.jpeg,.png,.gif,.bmp,.webp,.mp4,.mov,.avi,.webm,.mkv"
+                action={(file: any) => "/api/upload/file?file_type=" + (file.name.match(/\.(mp4|mov|avi|webm|mkv)$/i) ? "videos" : "images")}
+                onChange={(info: any) => {
+                  if (info.file.status === "done") {
+                    const resp = info.file.response
+                    if (resp?.code === 0) {
+                      setUploadedMaterials(prev => [...prev, resp.data.path])
+                      message.success(info.file.name + " 上传成功")
+                    } else { message.error(info.file.name + " 失败") }
+                  }
+                }}>
+                <Button icon={<InboxOutlined />}>选择文件</Button>
+              </Upload>
+              {uploadedMaterials.length > 0 && (
+                <div style={{ marginTop: 8, fontSize: 12, color: "#94a3b8" }}>
+                  已选 {uploadedMaterials.length} 个文件
+                </div>
+              )}
+            </Card>
+          )}
         </Form>
+
+        <div style={{ display: "flex", justifyContent: "space-between", marginTop: 24 }}>
+          <Button onClick={() => { if (wizardStep === 0) { setModalOpen(false); setWizardStep(0) } else setWizardStep(wizardStep - 1) }}>
+            {wizardStep === 0 ? "取消" : "上一步"}
+          </Button>
+          {wizardStep < 3 ? (
+            <Button type="primary" onClick={async () => {
+              if (wizardStep === 0) { try { await form.validateFields(["title"]) } catch { return } }
+              else if (wizardStep === 1) { try { await form.validateFields(["script_id"]) } catch { return } }
+              setWizardStep(wizardStep + 1)
+            }}>下一步</Button>
+          ) : (
+            <Button type="primary" onClick={handleCreate}>创建项目</Button>
+          )}
+        </div>
       </Modal>
 
       <Modal
