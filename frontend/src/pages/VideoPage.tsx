@@ -102,9 +102,6 @@ export default function VideoPage() {
       } else if (mode === 'auto_align') {
         lip_sync_enabled = 1
         lip_sync_mode = 'auto_align'
-      } else if (mode === 'virtual_host') {
-        lip_sync_enabled = 1
-        lip_sync_mode = 'virtual_host'
       } else if (mode === 'audio_only') {
         lip_sync_enabled = 1
         lip_sync_mode = 'audio_only'
@@ -227,7 +224,7 @@ export default function VideoPage() {
 
       <Alert
         message="视频生成说明"
-        description="建议优先上传自己的实拍照片/视频素材，出来的视频才是独一无二的。系统搜图匹配只是备用方案，不一定精准适配你的内容。支持Ken Burns镜头动画、交叉淡化转场。露脸可选’自动对齐’或’对口型’模式，不露脸选’图文解说’。"
+        description="建议优先上传自己的实拍照片/视频素材，出来的视频才是独一无二的。系统搜图匹配只是备用方案，不一定精准适配你的内容。支持Ken Burns镜头动画、交叉淡化转场。露脸可选'自动对齐'或'对口型'模式，不露脸选'图文解说'。"
         type="info"
         showIcon
         style={{ marginBottom: 16 }}
@@ -236,18 +233,18 @@ export default function VideoPage() {
       {/* 成品模板 */}
       {templates.length > 0 && (
         <Card size="small" title="成品模板（一键创建）" style={{ marginBottom: 16, borderRadius: 12 }}>
-          <div style={{ display: ‘flex’, gap: 12, overflowX: ‘auto’, paddingBottom: 4 }}>
+          <div style={{ display: 'flex', gap: 12, overflowX: 'auto', paddingBottom: 4 }}>
             {templates.map((t: any) => (
               <Card
                 key={t.id}
                 size="small"
                 hoverable
-                style={{ minWidth: 200, borderRadius: 10, border: ‘1px solid rgba(148,163,184,0.08)’ }}
+                style={{ minWidth: 200, borderRadius: 10, border: '1px solid rgba(148,163,184,0.08)' }}
                 onClick={() => applyTemplate(t.id)}
                 loading={applyingTemplate === t.id}
               >
                 <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 4 }}>{t.title}</div>
-                <div style={{ fontSize: 12, color: ‘#94a3b8’, marginBottom: 6 }}>{t.desc}</div>
+                <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 6 }}>{t.desc}</div>
                 <Tag color="blue" style={{ fontSize: 11 }}>{t.category}</Tag>
                 <Tag color="green" style={{ fontSize: 11 }}>一键创建</Tag>
               </Card>
@@ -306,8 +303,7 @@ export default function VideoPage() {
               <Select
                 options={[
                   { label: '🖼️ 图文解说（图片+镜头动画，不露脸）', value: 'image_animation' },
-                  { label: '🎤 露脸口播（自拍视频自动调速对齐，免费）', value: 'auto_align' },
-                  { label: '🤖 AI虚拟主播（一张照片→呼吸感微动，免费）', value: 'virtual_host' },
+                  { label: '🎤 露脸口播（自拍一段说话视频→匹配新语音→自动对齐嘴型）', value: 'auto_align' },
                   { label: '⏹️ 静态素材（无特效）', value: 'none' },
                   { label: '── 以下需要GPU ──', value: '', disabled: true },
                   { label: '🗣️ 数字人（一张照片→开口说话）', value: 'digital_human' },
