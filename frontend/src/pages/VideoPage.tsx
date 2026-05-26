@@ -99,7 +99,11 @@ export default function VideoPage() {
       loadData()
     } catch (e: any) {
       if (e?.errorFields) {
-        message.warning('请完善必填信息：' + e.errorFields.map((f: any) => f.name.join('/')).join('、'))
+        message.warning('请完善：' + e.errorFields.map((f: any) => f.name.join('/')).join('、'))
+      } else if (e?.message) {
+        message.error('创建失败：' + e.message)
+      } else {
+        message.error('创建失败，请检查必填项')
       }
     }
   }
@@ -302,7 +306,7 @@ export default function VideoPage() {
                   if (info.file.status === "done") {
                     const resp = info.file.response
                     if (resp?.code === 0) {
-                      setUploadedMaterials(prev => [...prev, resp.data.path])
+                      setUploadedMaterials(prev => prev.includes(resp.data.path) ? prev : [...prev, resp.data.path])
                       message.success(info.file.name + " 上传成功")
                     } else { message.error(info.file.name + " 失败") }
                   }
