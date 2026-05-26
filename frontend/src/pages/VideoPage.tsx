@@ -228,6 +228,13 @@ export default function VideoPage() {
           items={[{ title: "基础信息" }, { title: "文案配音" }, { title: "视频模式" }, { title: "上传素材" }]} />
 
         <Form form={form} layout="vertical">
+          {/* 隐藏域：保持跨步骤的字段值 */}
+          <Form.Item name="title" hidden><Input /></Form.Item>
+          <Form.Item name="script_id" hidden><Input /></Form.Item>
+          <Form.Item name="voice_id" hidden><Input /></Form.Item>
+          <Form.Item name="video_mode" hidden><Input /></Form.Item>
+          <Form.Item name="aspect_ratio" hidden><Input /></Form.Item>
+          <Form.Item name="subtitle_enabled" hidden><Input /></Form.Item>
           {wizardStep === 0 && (
             <>
               <Form.Item name="title" label="项目名称" rules={[{ required: true, message: "请输入" }]}>
