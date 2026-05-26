@@ -1,42 +1,49 @@
 import { useEffect, useState, useMemo } from 'react'
-import { Button, Image, message, Popconfirm, Upload, Card, Empty, Input, Tabs, Checkbox, Space, Select, Badge } from 'antd'
-import { InboxOutlined, DeleteOutlined, PictureOutlined, SearchOutlined, DownloadOutlined } from '@ant-design/icons'
+import { Button, Image, message, Popconfirm, Upload, Card, Empty, Input, Tabs, Checkbox, Space, Segmented, Badge } from 'antd'
+import {
+  InboxOutlined, DeleteOutlined, PictureOutlined, SearchOutlined,
+  DownloadOutlined, PlayCircleOutlined, AppstoreOutlined, UnorderedListOutlined,
+} from '@ant-design/icons'
 import { uploadApi } from '../services/api'
 
 const CATEGORIES = ['全部', '人物', '产品', '场景', '素材', '未分类']
 
+const PRESET_CATEGORIES = ['历史', '家居', '美食', '科技']
+
 export default function MaterialLibraryPage() {
   const [files, setFiles] = useState<any[]>([])
+  const [presets, setPresets] = useState<Record<string, any[]>>({})
   const [loading, setLoading] = useState(false)
   const [search, setSearch] = useState('')
   const [activeCat, setActiveCat] = useState('全部')
   const [selected, setSelected] = useState<string[]>([])
-  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid')
+  const [viewMode, setViewMode] = useState<string>('grid')
+  const [tab, setTab] = useState<string>('mine')
 
   const loadFiles = async () => {
     setLoading(true)
     try {
       const res: any = await uploadApi.listFiles()
-      const list = Array.isArray(res) ? res : (res.data || [])
-      setFiles(list)
-    } catch { message.error('加载素材库失败') } finally { setLoading(false) }
+      setFiles(Array.isArray(res?.data) ? res.data : (res || []))
+      // Load presets
+      const pRes = await fetch('/api/materials/presets').then(r => r.json())
+      setPresets(pRes?.presets || {})
+    } catch { message.error('加载失败') } finally { setLoading(false) }
   }
 
   useEffect(() => { loadFiles() }, [])
 
   const handleDelete = async (path: string) => {
-    try { await uploadApi.deleteFile(path); message.success('已删除'); setFiles(p => p.filter(f => f.path !== path)) } catch { message.error('删除失败') }
+    try { await uploadApi.deleteFile(path); message.success('已删除'); loadFiles() } catch { message.error('删除失败') }
   }
 
   const batchDelete = async () => {
-    for (const path of selected) { try { await uploadApi.deleteFile(path) } catch {} }
-    message.success('批量删除完成')
-    setFiles(p => p.filter(f => !selected.includes(f.path)))
-    setSelected([])
+    for (const p of selected) { try { await uploadApi.deleteFile(p) } catch {} }
+    message.success('批量删除完成'); loadFiles(); setSelected([])
   }
 
   const isImage = (name: string) =>
-    ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp'].some(ext => name.toLowerCase().endsWith(ext))
+    ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp'].some(e => name.toLowerCase().endsWith(e))
 
   const classify = (name: string) => {
     const n = name.toLowerCase()
@@ -55,95 +62,120 @@ export default function MaterialLibraryPage() {
   }, [files, search, activeCat])
 
   const catCounts = useMemo(() => {
-    const counts: Record<string, number> = { '全部': files.length }
-    files.forEach(f => { const c = classify(f.name); counts[c] = (counts[c] || 0) + 1 })
-    return counts
+    const c: Record<string, number> = { '全部': files.length }
+    files.forEach(f => { const cat = classify(f.name); c[cat] = (c[cat] || 0) + 1 })
+    return c
   }, [files])
+
+  const renderCard = (item: any, isPreset: boolean) => (
+    <Card key={isPreset ? item.path : item.path} size="small"
+      style={viewMode === 'grid' ? { width: 200, borderRadius: 10, overflow: 'hidden' } : { borderRadius: 8 }}
+      cover={viewMode === 'grid' && (isImage(item.name)
+        ? <Image src={`/uploads/${item.path}`} style={{ height: 130, objectFit: 'cover' }} preview={!!item.path} fallback=\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='130'%3E%3Crect fill='%231a1a2e' width='200' height='130'/%3E%3Ctext fill='%23999' x='100' y='70' text-anchor='middle' font-size='14'%3E{item.name}%3C/text%3E%3C/svg%3E\" />
+        : <div style={{ height: 130, background: '#1a1a2e', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <PlayCircleOutlined style={{ fontSize: 36, color: '#999' }} />
+        </div>)}
+      actions={isPreset ? [] : [
+        <Checkbox key=\"sel\" checked={selected.includes(item.path)} onChange={e => {
+          setSelected(e.target.checked ? [...selected, item.path] : selected.filter(x => x !== item.path))
+        }} />,
+        <Button key=\"dl\" size=\"small\" type=\"link\" icon={<DownloadOutlined />}
+          onClick={() => window.open(`/uploads/${item.path}`, '_blank')} />,
+        <Popconfirm key=\"del\" title=\"确定删除？\" onConfirm={() => handleDelete(item.path)}>
+          <Button size=\"small\" danger icon={<DeleteOutlined />} /></Popconfirm>,
+      ]}>
+      <Card.Meta
+        title={<div style={{ fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.name}</div>}
+        description={isPreset
+          ? <Badge color=\"blue\" text=\"预置\" />
+          : <span>{Math.round((item.size || 0) / 1024)}KB · <Badge color=\"blue\" style={{ fontSize: 10 }} text={classify(item.name)} /></span>}
+      />
+    </Card>
+  )
+
+  const renderList = (items: any[], isPreset: boolean) => (
+    viewMode === 'grid'
+      ? <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>{items.map(item => renderCard(item, isPreset))}</div>
+      : <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        {items.map(item => (
+          <Card key={item.path} size=\"small\" style={{ borderRadius: 8 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              {!isPreset && <Checkbox checked={selected.includes(item.path)} onChange={e => {
+                setSelected(e.target.checked ? [...selected, item.path] : selected.filter(x => x !== item.path))
+              }} />}
+              <div style={{ width: 40, height: 40, borderRadius: 6, overflow: 'hidden', flexShrink: 0, background: '#1a1a2e', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                {isImage(item.name)
+                  ? <Image src={`/uploads/${item.path}`} style={{ width: 40, height: 40, objectFit: 'cover' }} preview={false} />
+                  : <PlayCircleOutlined style={{ fontSize: 18, color: '#999' }} />}
+              </div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 13 }}>{item.name}</div>
+                <div style={{ fontSize: 11, color: '#94a3b8' }}>
+                  {isPreset ? <Badge color=\"blue\" text=\"预置\" /> : `${Math.round((item.size || 0) / 1024)}KB · ${classify(item.name)}`}
+                </div>
+              </div>
+              {!isPreset && <Space size=\"small\">
+                <Button size=\"small\" type=\"link\" icon={<DownloadOutlined />} onClick={() => window.open(`/uploads/${item.path}`, '_blank')} />
+                <Popconfirm title=\"确定删除？\" onConfirm={() => handleDelete(item.path)}>
+                  <Button size=\"small\" danger icon={<DeleteOutlined />} /></Popconfirm>
+              </Space>}
+            </div>
+          </Card>
+        ))}
+      </div>
+  )
 
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, flexWrap: 'wrap', gap: 8 }}>
         <h2 style={{ margin: 0 }}><PictureOutlined style={{ color: '#722ed1', marginRight: 8 }} />素材库</h2>
         <Space>
-          <Upload multiple accept=".jpg,.jpeg,.png,.gif,.bmp,.webp,.mp4,.mov,.avi,.webm,.mkv"
+          <Upload multiple accept=\".jpg,.jpeg,.png,.gif,.bmp,.webp,.mp4,.mov,.avi,.webm,.mkv\"
             action={(file: any) => `/api/upload/file?file_type=${isImage(file.name) ? 'images' : 'videos'}`}
             onChange={(info: any) => {
               if (info.file.status === 'done') { message.success(`${info.file.name} 上传成功`); loadFiles() }
               else if (info.file.status === 'error') message.error(`${info.file.name} 上传失败`)
             }}>
-            <Button type="primary" icon={<InboxOutlined />}>上传素材</Button>
+            <Button type=\"primary\" icon={<InboxOutlined />}>上传我的素材</Button>
           </Upload>
           {selected.length > 0 && (
             <Popconfirm title={`确定删除选中的${selected.length}个文件？`} onConfirm={batchDelete}>
               <Button danger icon={<DeleteOutlined />}>删除选中({selected.length})</Button>
             </Popconfirm>
           )}
-          <Select size="small" value={viewMode} onChange={setViewMode} style={{ width: 80 }}
-            options={[{ label: '网格', value: 'grid' }, { label: '列表', value: 'list' }]} />
+          <Segmented size=\"small\" value={viewMode} onChange={v => setViewMode(v as string)}
+            options={[{ label: '网格', value: 'grid', icon: <AppstoreOutlined /> }, { label: '列表', value: 'list', icon: <UnorderedListOutlined /> }]} />
         </Space>
       </div>
 
-      <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
-        <Input prefix={<SearchOutlined />} placeholder="搜索文件名..." value={search} onChange={e => setSearch(e.target.value)}
-          style={{ width: 220, borderRadius: 8 }} allowClear size="small" />
-        <Tabs activeKey={activeCat} onChange={setActiveCat} size="small" style={{ flex: 1 }}
-          items={CATEGORIES.map(c => ({
-            key: c, label: <Badge count={catCounts[c] || 0} offset={[8, -2]} size="small" style={{ zIndex: 0 }}>
-              <span style={{ paddingRight: 8 }}>{c}</span>
-            </Badge>
-          }))} />
-      </div>
+      <Tabs activeKey={tab} onChange={setTab} items={[
+        { key: 'mine', label: `我的素材 (${files.length})` },
+        { key: 'presets', label: '预置参考' },
+      ]} style={{ marginBottom: 0 }} />
 
-      {files.length === 0 && !loading && <Empty description="暂无素材，点击右上角上传" />}
+      {tab === 'mine' && (
+        <>
+          <div style={{ display: 'flex', gap: 8, margin: '12px 0', flexWrap: 'wrap' }}>
+            <Input prefix={<SearchOutlined />} placeholder=\"搜索文件名...\" value={search}
+              onChange={e => setSearch(e.target.value)} style={{ width: 200, borderRadius: 8 }} allowClear size=\"small\" />
+            <Tabs activeKey={activeCat} onChange={setActiveCat} size=\"small\" style={{ flex: 1 }}
+              items={CATEGORIES.map(c => ({ key: c, label: `${c} ${catCounts[c] || 0}` }))} />
+          </div>
+          {filtered.length === 0 ? <Empty description={search ? '无匹配文件' : '暂无素材，点击右上角上传'} /> : renderList(filtered, false)}
+        </>
+      )}
 
-      <div style={viewMode === 'grid'
-        ? { display: 'flex', flexWrap: 'wrap', gap: 12 }
-        : { display: 'flex', flexDirection: 'column', gap: 8 }}>
-        {filtered.map(f => (
-          viewMode === 'grid' ? (
-            <Card key={f.path} size="small" style={{ width: 200, borderRadius: 10, overflow: 'hidden' }}
-              cover={isImage(f.name)
-                ? <Image src={`/uploads/${f.path}`} style={{ height: 130, objectFit: 'cover' }} />
-                : <div style={{ height: 130, background: '#1a1a2e', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <video src={`/uploads/${f.path}`} controls preload="metadata" style={{ height: 130, maxWidth: '100%', objectFit: 'cover' }} />
-                </div>}
-              actions={[
-                <Checkbox checked={selected.includes(f.path)} key="sel" onChange={e => {
-                  setSelected(e.target.checked ? [...selected, f.path] : selected.filter(x => x !== f.path))
-                }} />,
-                <Button size="small" key="dl" type="link" icon={<DownloadOutlined />} href={`/uploads/${f.path}`} target="_blank" />,
-                <Popconfirm key="del" title="确定删除？" onConfirm={() => handleDelete(f.path)}>
-                  <Button size="small" danger icon={<DeleteOutlined />} />
-                </Popconfirm>,
-              ]}>
-              <Card.Meta title={<div style={{ fontSize: 12 }}>{f.name.slice(0, 20)}</div>}
-                description={<span>{Math.round(f.size / 1024)}KB · <Badge color="blue" style={{ fontSize: 10 }} text={classify(f.name)} /></span>} />
-            </Card>
-          ) : (
-            <Card key={f.path} size="small" style={{ borderRadius: 8 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                <Checkbox checked={selected.includes(f.path)} onChange={e => {
-                  setSelected(e.target.checked ? [...selected, f.path] : selected.filter(x => x !== f.path))
-                }} />
-                <div style={{ width: 40, height: 40, borderRadius: 6, overflow: 'hidden', flexShrink: 0, background: '#1a1a2e' }}>
-                  {isImage(f.name) ? <Image src={`/uploads/${f.path}`} style={{ width: 40, height: 40, objectFit: 'cover' }} preview={false} />
-                    : <PlayCircleOutlined style={{ fontSize: 20, margin: 10 }} />}
-                </div>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.name}</div>
-                  <div style={{ fontSize: 11, color: '#94a3b8' }}>{Math.round(f.size / 1024)}KB · <Badge color="blue" style={{ fontSize: 10 }} text={classify(f.name)} /></div>
-                </div>
-                <Space size="small">
-                  <Button size="small" type="link" icon={<DownloadOutlined />} href={`/uploads/${f.path}`} target="_blank" />
-                  <Popconfirm title="确定删除？" onConfirm={() => handleDelete(f.path)}>
-                    <Button size="small" danger icon={<DeleteOutlined />} />
-                  </Popconfirm>
-                </Space>
-              </div>
-            </Card>
-          )
-        ))}
-      </div>
+      {tab === 'presets' && (
+        <div style={{ marginTop: 12 }}>
+          {Object.keys(presets).length === 0 && <Empty description=\"暂无预置素材\" />}
+          {PRESET_CATEGORIES.map(cat => presets[cat]?.length > 0 && (
+            <div key={cat} style={{ marginBottom: 20 }}>
+              <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 8 }}>📁 {cat}</div>
+              {renderList(presets[cat].map((p: any) => ({ ...p, name: p.filename || p.name })), true)}
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   )
 }
