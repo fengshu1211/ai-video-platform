@@ -69,13 +69,11 @@ def generate_video(project_id: int, db: Session = Depends(get_db)):
 
     # 子进程执行（传入用户自定义API Key）
     import subprocess as _sp, sys as _sys, os as _os
+    from app.main import _user_keys
     backend_dir = Path(__file__).resolve().parent.parent.parent
     env = {**_os.environ,
-           "DASHSCOPE_API_KEY": _user_keys.dashscope if hasattr(_user_keys, 'dashscope') else "",
-           "SILICONFLOW_API_KEY": _user_keys.siliconflow if hasattr(_user_keys, 'siliconflow') else ""}
-    from app.main import _user_keys
-    env["DASHSCOPE_API_KEY"] = getattr(_user_keys, 'dashscope', '') or _os.getenv("DASHSCOPE_API_KEY", "")
-    env["SILICONFLOW_API_KEY"] = getattr(_user_keys, 'siliconflow', '') or _os.getenv("SILICONFLOW_API_KEY", "")
+           "DASHSCOPE_API_KEY": getattr(_user_keys, 'dashscope', '') or _os.getenv("DASHSCOPE_API_KEY", ""),
+           "SILICONFLOW_API_KEY": getattr(_user_keys, 'siliconflow', '') or _os.getenv("SILICONFLOW_API_KEY", "")}
     proc = _sp.run(
         [_sys.executable, "-u", "-c",
          f"import sys; sys.path.insert(0, r'{backend_dir}'); "
