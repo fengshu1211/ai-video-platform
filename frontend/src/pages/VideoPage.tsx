@@ -73,8 +73,6 @@ export default function VideoPage() {
         lip_sync_enabled = 1; lip_sync_mode = 'full'
       } else if (mode === 'auto_align') {
         lip_sync_enabled = 1; lip_sync_mode = 'auto_align'
-      } else if (mode === 'virtual_host') {
-        lip_sync_enabled = 1; lip_sync_mode = 'virtual_host'
       } else if (mode === 'audio_only') {
         lip_sync_enabled = 1; lip_sync_mode = 'audio_only'
       } else if (mode === 'image_animation') {
@@ -280,7 +278,6 @@ export default function VideoPage() {
                 <Select size="large" options={[
                   { label: "🖼️ 图文解说（图片+镜头动画，不露脸）", value: "image_animation" },
                   { label: "🎤 露脸口播（自拍视频自动调速对齐，免费）", value: "auto_align" },
-                  { label: "🤖 AI虚拟主播（一张照片→呼吸感微动，免费）", value: "virtual_host" },
                   { label: "⏹️ 静态素材（无特效）", value: "none" },
                   { label: "── 以下需要GPU ──", value: "", disabled: true },
                   { label: "🗣️ 数字人（一张照片→开口说话）", value: "digital_human" },

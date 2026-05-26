@@ -262,10 +262,10 @@ def generate_virtual_host_clip(
     """虚拟主播：单张照片+微动呼吸感（缓慢zoom+微晃+亮度微变）"""
     fps = 25
     frames = max(int(duration * fps), 1)
-    # 极微小的zoom：1.0 → 1.02
-    zoom_step = 0.02 / frames
-    # 微小平移：模拟身体轻晃
-    pan_px = max(2, int(width * 0.01))
+    # 明显zoom：1.0 → 1.06（6%缩放，肉眼可见）
+    zoom_step = 0.06 / frames
+    # 明显平移：模拟身体轻晃
+    pan_px = max(4, int(width * 0.02))
     pan_step = pan_px * 2 / frames
 
     vf = (
@@ -274,8 +274,7 @@ def generate_virtual_host_clip(
         f"zoompan=z='1+{zoom_step:.6f}*on':"
         f"x='iw/2-(iw/zoom/2)+{pan_step:.3f}*sin(on*0.05)':"
         f"y='ih/2-(ih/zoom/2)':"
-        f"d=1:s={width}x{height}:fps={fps},"
-        f"eq=brightness=0.01*sin(on*0.08)"  # 亮度微变模拟呼吸
+        f"d=1:s={width}x{height}:fps={fps}"
     )
     subprocess.run([
         "ffmpeg", "-y", "-framerate", "25", "-loop", "1", "-i", str(image_path),

@@ -92,6 +92,44 @@ STYLE_PROMPTS = {
     "aggressive": "请对以下文案进行激进改写，仅保留核心事实和关键信息点，完全重新组织语言和结构，换一种全新的表达风格。可以使用不同的叙事角度。直接输出改写后的文案，不要加任何解释。",
 }
 
+MARKETING_STYLES = {
+    "ogilvy": {
+        "name": "研究驱动风",
+        "desc": "数据支撑+事实说服+利益导向",
+        "prompt": "采用David Ogilvy风格改写：1.用具体数据开头制造冲击感；2.每段用事实和研究支撑观点；3.强调产品/内容的实际利益而非空洞形容词；4.结尾给出明确结论。",
+        "opening": "用令人惊讶的具体数字/事实开头",
+        "structure": "事实→数据→利益→结论",
+    },
+    "halbert": {
+        "name": "直复营销风",
+        "desc": "情感钩子+紧迫感+行动号召",
+        "prompt": "采用Gary Halbert风格改写：1.用极度吸引人的情感钩子开场；2.制造问题紧迫感让读者停不下来；3.穿插具体案例和故事；4.结尾给出强烈的行动号召。",
+        "opening": "用让人无法抗拒的好奇心钩子开头",
+        "structure": "钩子→故事→紧迫感→行动",
+    },
+    "schwartz": {
+        "name": "欲望引导风",
+        "desc": "先造欲望+再给方案+层层递进",
+        "prompt": "采用Eugene Schwartz风格改写：1.先放大读者的渴望和欲望；2.描绘理想状态的美好画面；3.再给出实现路径；4.最后点出你的核心观点是唯一答案。",
+        "opening": "先描绘读者最渴望的理想状态",
+        "structure": "欲望→画面→路径→答案",
+    },
+    "aida": {
+        "name": "AIDA经典风",
+        "desc": "注意→兴趣→欲望→行动",
+        "prompt": "采用AIDA框架改写：1.Attention：用一个令人震惊的事实/问题引起注意；2.Interest：展开细节让读者产生兴趣；3.Desire：描绘好处激发想要的情绪；4.Action：结尾给出明确的下一步。",
+        "opening": "用一个让人无法忽视的事实吸引注意",
+        "structure": "注意→兴趣→欲望→行动",
+    },
+    "pas": {
+        "name": "痛点解决风",
+        "desc": "戳痛点+放大焦虑+给出解药",
+        "prompt": "采用PAS框架改写：1.Problem：直戳读者最痛的困扰；2.Agitate：用场景描述放大这种痛苦；3.Solve：给出你的解决方案/核心观点。让读者感到你懂他们的痛苦。",
+        "opening": "直戳读者最焦虑的具体痛点",
+        "structure": "痛点→放大→解药→升华",
+    },
+}
+
 
 def generate_titles(text: str, count: int = 5, user_id: int = None) -> list[str]:
     """为文案生成爆款标题（自动注入人设风格）"""
@@ -117,9 +155,9 @@ def generate_titles(text: str, count: int = 5, user_id: int = None) -> list[str]
 
 
 def rewrite_text(text: str, style: str = "similar", target_word_count: int | None = None,
-                 user_id: int = None) -> str:
-    """AI改写文案，自动注入用户人设风格"""
-    cache_key = f"{text}|{style}|{target_word_count or ''}|{user_id or ''}"
+                 user_id: int = None, marketing_style: str = "") -> str:
+    """AI改写文案，自动注入用户人设风格+营销大师框架"""
+    cache_key = f"{text}|{style}|{target_word_count or ''}|{user_id or ''}|{marketing_style}"
     cached = _get_cached(cache_key, "rewrite")
     if cached:
         return cached
@@ -127,6 +165,11 @@ def rewrite_text(text: str, style: str = "similar", target_word_count: int | Non
     prompt = STYLE_PROMPTS.get(style, STYLE_PROMPTS["similar"])
     if target_word_count and target_word_count > 0:
         prompt += f" 请控制改写后的字数在 {target_word_count} 字左右，可以适当浮动 ±10%。"
+
+    # 营销风格注入
+    if marketing_style and marketing_style in MARKETING_STYLES:
+        ms = MARKETING_STYLES[marketing_style]
+        prompt += f"\n\n[营销框架] {ms['prompt']}"
 
     persona_ctx = get_persona_context(user_id)
     system = "你是一个专业自媒体文案改写助手。"

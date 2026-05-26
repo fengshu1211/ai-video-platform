@@ -1,6 +1,5 @@
 """视频生成异步任务——全自动管线"""
 import json
-from celery import current_task
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 from app.config import DATABASE_URL

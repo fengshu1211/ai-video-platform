@@ -11,6 +11,7 @@ class RewriteRequest(BaseModel):
     source_url: Optional[str] = None
     target_word_count: Optional[int] = None
     user_id: Optional[int] = None
+    marketing_style: Optional[str] = None
 
 
 class ScrapeRequest(BaseModel):

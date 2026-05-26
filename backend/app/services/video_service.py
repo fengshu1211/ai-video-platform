@@ -247,8 +247,8 @@ def generate_video(
         if lip_path.exists():
             pip_output = OUTPUTS_DIR / f"pip_{speech_path.stem}.mp4"
             from subprocess import run
-            if lip_sync_mode == "full":
-                # 全屏：对口型视频铺满，合成TTS音频
+            if lip_sync_mode in ("full", "virtual_host"):
+                # 全屏/虚拟主播：铺满画面，合成TTS音频
                 run(["ffmpeg","-y","-i",str(lip_path),"-i",str(final_audio),
                     "-vf",VIDEO_SCALE,"-map","0:v","-map","1:a",
                     "-c:v","libx264","-c:a","aac","-ar","44100","-b:a","192k",
@@ -494,7 +494,8 @@ def _build_drawtext_vf(subtitles: list[dict], width: int, height: int, total_dur
         max_chars = max(16, int(width * 0.85 / font_size))
         max_lines = 3
 
-    fontfile = "C\\:/Windows/Fonts/simhei.ttf"
+    import platform as _pf
+    fontfile = "C\\:/Windows/Fonts/simhei.ttf" if _pf.system() == "Windows" else "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc"
     line_height = int(font_size * 1.3)
     y_base = int(height * 0.78)
     pre_buffer = 0.0
@@ -555,7 +556,8 @@ def _build_drawtext_vf(subtitles: list[dict], width: int, height: int, total_dur
         max_chars = max(20, int(width * 0.85 / font_size))
         max_lines = 3
 
-    fontfile = "C\\:/Windows/Fonts/simhei.ttf"
+    import platform as _pf
+    fontfile = "C\\:/Windows/Fonts/simhei.ttf" if _pf.system() == "Windows" else "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc"
     line_height = int(font_size * 1.3)
     y_base = int(height * 0.78)
 

@@ -3,9 +3,17 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 from app.models.database import get_db, RewrittenScript
 from app.schemas.content import RewriteRequest, ScrapeRequest, ScriptOut, ScriptUpdate
-from app.services.ai_service import rewrite_text, generate_titles
+from app.services.ai_service import rewrite_text, generate_titles, MARKETING_STYLES
 
 router = APIRouter(prefix="/api/content", tags=["content"])
+
+@router.get("/marketing-styles")
+def list_marketing_styles():
+    """列出可用的营销文案风格"""
+    return {"code": 0, "styles": [
+        {"id": k, "name": v["name"], "desc": v["desc"], "structure": v["structure"], "opening": v["opening"]}
+        for k, v in MARKETING_STYLES.items()
+    ]}
 
 def _get_uid() -> int | None:
     try:
@@ -21,7 +29,7 @@ def rewrite_content(data: RewriteRequest, db: Session = Depends(get_db)):
     if data.style == "keep":
         rewritten = data.original_text
     else:
-        rewritten = rewrite_text(data.original_text, data.style, data.target_word_count, user_id=user_id)
+        rewritten = rewrite_text(data.original_text, data.style, data.target_word_count, user_id=user_id, marketing_style=data.marketing_style or "")
 
     script = RewrittenScript(
         topic_id=data.topic_id,

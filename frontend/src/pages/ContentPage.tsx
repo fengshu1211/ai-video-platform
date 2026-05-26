@@ -20,6 +20,7 @@ export default function ContentPage() {
   const topicText = (location.state as any)?.topicText || ''
   const [originalText, setOriginalText] = useState(topicText)
   const [style, setStyle] = useState('similar')
+  const [marketingStyle, setMarketingStyle] = useState('')
   const [targetWordCount, setTargetWordCount] = useState<number>(0)
   const [scrapeUrl, setScrapeUrl] = useState('')
   const [scraping, setScraping] = useState(false)
@@ -47,6 +48,7 @@ export default function ContentPage() {
     try {
       const payload: any = { original_text: originalText, style }
       if (targetWordCount > 0) payload.target_word_count = targetWordCount
+      if (marketingStyle) payload.marketing_style = marketingStyle
       const data = await contentApi.rewrite(payload) as any
       setCurrentResult(data)
       loadScripts()
@@ -160,6 +162,13 @@ export default function ContentPage() {
             />
             <div style={{ marginTop: 12, display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
               <Select value={style} onChange={setStyle} options={styleOptions} style={{ width: 200 }} />
+              <Select value={marketingStyle} onChange={setMarketingStyle} allowClear
+                placeholder="营销风格（可选）" style={{ width: 180 }}
+                options={[
+                  { label: '研究驱动', value: 'ogilvy' }, { label: '直复营销', value: 'halbert' },
+                  { label: '欲望引导', value: 'schwartz' }, { label: 'AIDA经典', value: 'aida' },
+                  { label: '痛点解决', value: 'pas' },
+                ]} />
               <Button type="primary" loading={rewriting} onClick={handleRewrite} icon={<EditOutlined />}>
                 AI 改写
               </Button>
