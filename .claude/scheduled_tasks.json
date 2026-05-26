@@ -96,6 +96,16 @@
       "createdBySessionId": "ebc32aed-433b-4603-8199-93b4505e8ee7",
       "createdByPid": 34624,
       "createdByProcStart": "639153923801935200"
+    },
+    {
+      "id": "7bd9e39e",
+      "cron": "0 10 */15 * *",
+      "prompt": "扫描GitHub trending和Claude Code社区，搜索新的高分技能/插件（星数>500或有明确痛点的）。找到后直接评估：有价值的直接安装，无价值的记录原因。更新 memory/feedback_skill_scanning.md 记录扫描结果。重点关注：prompt优化、代码审查、自动化测试、部署运维、性能监控类技能。",
+      "createdAt": 1779781560503,
+      "recurring": true,
+      "createdBySessionId": "ebc32aed-433b-4603-8199-93b4505e8ee7",
+      "createdByPid": 34624,
+      "createdByProcStart": "639153923801935200"
     }
   ]
 }

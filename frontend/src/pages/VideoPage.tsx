@@ -40,15 +40,17 @@ export default function VideoPage() {
   const applyTemplate = async (templateId: string) => {
     setApplyingTemplate(templateId)
     try {
-      const res = await fetch(`/api/templates/projects/${templateId}/apply`)
+      const res = await fetch(`/api/templates/projects/${templateId}/apply`, { method: 'POST' })
       const data = await res.json()
       if (!res.ok) { message.error('获取模板失败'); return }
       const tmpl = data.template
-      // Create project from template
+      // 找到匹配的voice profile id
+      const matchedVoice = voices.find(v => v.voice_id === tmpl.voice_id)
+      const voiceId = matchedVoice?.id || voices[0]?.id
       const createRes = await videoApi.create({
         title: tmpl.title,
         script_text: tmpl.script_text,
-        voice_id: voices.find(v => v.voice_id === tmpl.voice_id)?.id || voices[0]?.id,
+        voice_id: voiceId,
         aspect_ratio: tmpl.aspect_ratio,
         subtitle_enabled: tmpl.subtitle_enabled,
         image_animation_type: tmpl.image_animation_type,
