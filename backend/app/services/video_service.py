@@ -79,11 +79,26 @@ def generate_video(
             report(28, "正在自动对齐视频速度...")
             video_dur = get_media_duration(lip_path)
             ratio = speech_duration / max(video_dur, 0.1)
+
+            # 速度比提醒：太极端效果不好
+            if ratio > 2.5:
+                report(30, f"⚠ 原视频偏短({video_dur:.0f}s)，建议录制更长视频获得更好效果")
+            elif ratio < 0.4:
+                report(30, f"⚠ 原视频偏长({video_dur:.0f}s)，建议录制{int(speech_duration*1.2)}秒左右的视频")
+
             aligned = OUTPUTS_DIR / f"aligned_{lip_path.stem}.mp4"
             from subprocess import run
+            # 改进：中等画质+轻微降噪+人脸区域优先裁剪
+            vf_parts = [f"setpts={ratio:.4f}*PTS"]
+            # 如果变速后有明显伪影，加轻微降噪
+            if ratio > 1.8 or ratio < 0.6:
+                vf_parts.append("hqdn3d=2:1:3:3")
+            vf_parts.append(VIDEO_SCALE)
+            vf_str = ",".join(vf_parts)
+
             run(["ffmpeg","-y","-i",str(lip_path),"-an",
-                "-vf",f"setpts={ratio:.4f}*PTS,{VIDEO_SCALE}",
-                "-c:v","libx264","-preset","veryfast",
+                "-vf",vf_str,
+                "-c:v","libx264","-preset","medium","-crf","22",
                 "-pix_fmt","yuv420p",str(aligned)], check=True, timeout=120)
             lip_sync_video = str(aligned.relative_to(aligned.parent.parent))
             report(32, f"自动对齐完成（视频{ratio:.2f}x变速）")

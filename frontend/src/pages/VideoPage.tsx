@@ -303,7 +303,7 @@ export default function VideoPage() {
               <Select
                 options={[
                   { label: '🖼️ 图文解说（图片+镜头动画，不露脸）', value: 'image_animation' },
-                  { label: '🎤 露脸口播（自拍一段说话视频→匹配新语音→自动对齐嘴型）', value: 'auto_align' },
+                  { label: '🎤 露脸口播（自拍说话→替换语音→自动调速对齐，免费）', value: 'auto_align' },
                   { label: '⏹️ 静态素材（无特效）', value: 'none' },
                   { label: '── 以下需要GPU ──', value: '', disabled: true },
                   { label: '🗣️ 数字人（一张照片→开口说话）', value: 'digital_human' },
