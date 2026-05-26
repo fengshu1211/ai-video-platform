@@ -26,6 +26,25 @@ export default function VideoPage() {
   const [form] = Form.useForm()
   const [wizardStep, setWizardStep] = useState(0)
 
+  const MaterialUploader = ({ onUpload, materials, acceptVideo }: { onUpload: any, materials: any, acceptVideo?: boolean }) => (
+    <Upload.Dragger multiple
+      accept={acceptVideo === false ? ".jpg,.jpeg,.png,.gif,.bmp,.webp" : ".jpg,.jpeg,.png,.gif,.bmp,.webp,.mp4,.mov,.avi,.webm,.mkv"}
+      action={(file: any) => "/api/upload/file?file_type=" + (file.name.match(/\.(mp4|mov|avi|webm|mkv)$/i) ? "videos" : "images")}
+      onChange={(info: any) => {
+        if (info.file.status === "done") {
+          const resp = info.file.response
+          if (resp?.code === 0) {
+            onUpload((prev: string[]) => prev.includes(resp.data.path) ? prev : [...prev, resp.data.path])
+            message.success(info.file.name + " 上传成功")
+          } else { message.error(info.file.name + " 失败") }
+        }
+      }}
+      showUploadList={true}>
+      <p className="ant-upload-drag-icon"><InboxOutlined style={{ fontSize: 28, color: "#3b82f6" }} /></p>
+      <p style={{ fontSize: 13 }}>点击或拖拽上传</p>
+    </Upload.Dragger>
+  )
+
   const loadData = () => {
     Promise.all([
       videoApi.list().then(setProjects),
@@ -225,7 +244,7 @@ export default function VideoPage() {
         width={600}
       >
         <Steps current={wizardStep} size="small" style={{ marginBottom: 24 }}
-          items={[{ title: "基础信息" }, { title: "文案配音" }, { title: "视频模式" }, { title: "上传素材" }]} />
+          items={[{ title: "基础信息" }, { title: "内容配音" }, { title: "视频模式" }]} />
 
         <Form form={form} layout="vertical">
           {/* 隐藏域：保持跨步骤的字段值 */}
@@ -276,74 +295,64 @@ export default function VideoPage() {
             <>
               <Form.Item name="video_mode" label="你想做什么样的视频？" initialValue="image_animation">
                 <Select size="large" options={[
-                  { label: "🖼️ 图文解说（图片+镜头动画，不露脸）", value: "image_animation" },
-                  { label: "🎤 露脸口播（自拍视频自动调速对齐，免费）", value: "auto_align" },
-                  { label: "⏹️ 静态素材（无特效）", value: "none" },
+                  { label: "图文解说：AI自动搜图+镜头动画+字幕（不露脸）", value: "image_animation" },
+                  { label: "露脸口播：自拍说话视频→去原声→调速对齐文案→全屏（免费）", value: "auto_align" },
+                  { label: "自定义素材：自己的图片/视频→去杂音+自动剪辑+字幕", value: "none" },
                   { label: "── 以下需要GPU ──", value: "", disabled: true },
-                  { label: "🗣️ 数字人（一张照片→开口说话）", value: "digital_human" },
-                  { label: "🎥 画中画口播（自拍视频缩小到角落）", value: "lip_sync_pip" },
-                  { label: "🎬 全屏口播（自拍视频铺满全屏）", value: "lip_sync_full" },
+                  { label: "数字人：一张照片开口说话", value: "digital_human" },
+                  { label: "画中画口播：自拍视频缩小到角落", value: "lip_sync_pip" },
+                  { label: "全屏口播：自拍视频铺满全屏", value: "lip_sync_full" },
                 ]} />
               </Form.Item>
+
               <Form.Item noStyle shouldUpdate={(prev, cur) => prev.video_mode !== cur.video_mode}>
                 {({ getFieldValue }) => {
                   const mode = getFieldValue("video_mode")
-                  if (mode === "image_animation") {
-                    return <Form.Item name="animation_sub_type" label="镜头效果" initialValue="zoom_in">
-                      <Select options={[
-                        { label: "缓慢放大", value: "zoom_in" }, { label: "缓慢缩小", value: "zoom_out" },
-                        { label: "左移", value: "pan_left" }, { label: "右移", value: "pan_right" },
-                        { label: "上移", value: "pan_up" }, { label: "下移", value: "pan_down" },
-                      ]} />
-                    </Form.Item>
-                  }
-                  return null
+                  return (
+                    <div>
+                      {mode === "image_animation" && (
+                        <>
+                          <Form.Item name="animation_sub_type" label="镜头效果" initialValue="zoom_in">
+                            <Select options={[
+                              { label: "缓慢放大", value: "zoom_in" }, { label: "缓慢缩小", value: "zoom_out" },
+                              { label: "左移", value: "pan_left" }, { label: "右移", value: "pan_right" },
+                              { label: "上移", value: "pan_up" }, { label: "下移", value: "pan_down" },
+                            ]} />
+                          </Form.Item>
+                          <Card size="small" title="上传素材（可选，不传则AI自动搜图）" style={{ borderRadius: 12, marginTop: 8 }}>
+                            <MaterialUploader onUpload={setUploadedMaterials} materials={uploadedMaterials} />
+                          </Card>
+                        </>
+                      )}
+                      {mode === "auto_align" && (
+                        <Card size="small" title="上传你的说话视频" style={{ borderRadius: 12, marginTop: 8 }}>
+                          <div style={{ fontSize: 12, color: "#94a3b8", marginBottom: 8 }}>
+                            录制一段自己对着镜头说话的竖屏视频，系统自动：去原声→调速对齐文案→全屏铺满
+                          </div>
+                          <MaterialUploader onUpload={setUploadedMaterials} materials={uploadedMaterials} acceptVideo />
+                        </Card>
+                      )}
+                      {mode === "none" && (
+                        <Card size="small" title="上传你的图片/视频素材" style={{ borderRadius: 12, marginTop: 8 }}>
+                          <div style={{ fontSize: 12, color: "#94a3b8", marginBottom: 8 }}>
+                            上传自己拍摄的图片和视频，系统自动：视频去杂音保留人声→剪辑匹配时长→加字幕→图片加镜头动画
+                          </div>
+                          <MaterialUploader onUpload={setUploadedMaterials} materials={uploadedMaterials} />
+                        </Card>
+                      )}
+                      {(mode === "digital_human" || mode === "lip_sync_pip" || mode === "lip_sync_full") && (
+                        <Card size="small" title="上传人脸素材" style={{ borderRadius: 12, marginTop: 8 }}>
+                          <div style={{ fontSize: 12, color: "#fbbf24", marginBottom: 8 }}>
+                            {mode === "digital_human" ? "上传一张正面照片" : "上传说话视频素材"}
+                          </div>
+                          <MaterialUploader onUpload={setUploadedMaterials} materials={uploadedMaterials} acceptVideo={mode !== "digital_human"} />
+                        </Card>
+                      )}
+                    </div>
+                  )
                 }}
               </Form.Item>
             </>
-          )}
-
-          {wizardStep === 3 && (
-            <div>
-              <Card size="small" title="上传素材（强烈建议）" style={{ borderRadius: 12, marginBottom: 12 }}>
-                <div style={{ fontSize: 13, color: "#fbbf24", marginBottom: 12 }}>
-                  上传你自己的实拍照片和视频后，系统自动剪辑：视频去原声/变速匹配时长/加镜头动画
-                </div>
-                <Upload.Dragger
-                  multiple
-                  accept=".jpg,.jpeg,.png,.gif,.bmp,.webp,.mp4,.mov,.avi,.webm,.mkv"
-                  action={(file: any) => "/api/upload/file?file_type=" + (file.name.match(/\.(mp4|mov|avi|webm|mkv)$/i) ? "videos" : "images")}
-                  onChange={(info: any) => {
-                    if (info.file.status === "done") {
-                      const resp = info.file.response
-                      if (resp?.code === 0) {
-                        setUploadedMaterials(prev => prev.includes(resp.data.path) ? prev : [...prev, resp.data.path])
-                        message.success(info.file.name + " 上传成功")
-                      } else { message.error(info.file.name + " 失败") }
-                    }
-                  }}
-                  showUploadList={true}>
-                  <p className="ant-upload-drag-icon"><InboxOutlined style={{ fontSize: 36, color: "#3b82f6" }} /></p>
-                  <p style={{ fontSize: 14 }}>点击或拖拽上传照片/视频</p>
-                  <p style={{ fontSize: 12, color: "#94a3b8" }}>支持JPG/PNG/MP4/MOV，系统会自动处理</p>
-                </Upload.Dragger>
-              </Card>
-
-              {uploadedMaterials.length > 0 && (
-                <Card size="small" title={"已上传 " + uploadedMaterials.length + " 个素材"} style={{ borderRadius: 12, background: "rgba(16,185,129,0.05)" }}>
-                  <div style={{ fontSize: 12, color: "#94a3b8" }}>
-                    图片自动加Ken Burns动画 · 视频自动去原声/变速匹配 · 按音频时长均匀分配
-                  </div>
-                  <Button size="small" style={{ marginTop: 8 }} onClick={() => setUploadedMaterials([])}>清空重选</Button>
-                </Card>
-              )}
-
-              {uploadedMaterials.length === 0 && (
-                <div style={{ fontSize: 12, color: "#94a3b8", textAlign: "center", marginTop: 8 }}>
-                  不上传也行：系统自动根据文案全网搜索匹配图片
-                </div>
-              )}
-            </div>
           )}
         </Form>
 
@@ -351,7 +360,7 @@ export default function VideoPage() {
           <Button onClick={() => { if (wizardStep === 0) { setModalOpen(false); setWizardStep(0) } else setWizardStep(wizardStep - 1) }}>
             {wizardStep === 0 ? "取消" : "上一步"}
           </Button>
-          {wizardStep < 3 ? (
+          {wizardStep < 2 ? (
             <Button type="primary" onClick={async () => {
               if (wizardStep === 0) { try { await form.validateFields(["title"]) } catch { return } }
               else if (wizardStep === 1) { try { await form.validateFields(["script_id"]) } catch { return } }

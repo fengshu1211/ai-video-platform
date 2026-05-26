@@ -67,27 +67,12 @@ def generate_video(project_id: int, db: Session = Depends(get_db)):
     db.add(track)
     db.commit()
 
-    # 子进程执行（传入用户自定义API Key）
-    import subprocess as _sp, sys as _sys, os as _os
-    from app.main import _user_keys
-    backend_dir = Path(__file__).resolve().parent.parent.parent
-    env = {**_os.environ,
-           "DASHSCOPE_API_KEY": getattr(_user_keys, 'dashscope', '') or _os.getenv("DASHSCOPE_API_KEY", ""),
-           "SILICONFLOW_API_KEY": getattr(_user_keys, 'siliconflow', '') or _os.getenv("SILICONFLOW_API_KEY", "")}
-    proc = _sp.run(
-        [_sys.executable, "-u", "-c",
-         f"import sys; sys.path.insert(0, r'{backend_dir}'); "
-         f"from app.tasks.video_tasks import _run_video_generation; "
-         f"print('RESULT:' + str(_run_video_generation({project_id})))"],
-        cwd=str(backend_dir),
-        capture_output=True, text=True, timeout=600,
-        env=env,
-    )
-    out = (proc.stdout or "")[-300:]
-    err = (proc.stderr or "")[-300:]
+    # 关闭当前DB会话，同步执行生成
+    db.close()
+    from app.tasks.video_tasks import _run_video_generation
+    result = _run_video_generation(project_id)
     return {"code": 0, "message": "视频生成完成",
-            "data": {"project_id": project_id, "task_id": track.id,
-                     "stdout": out, "stderr": err}}
+            "data": {"project_id": project_id, "task_id": track.id, "result": result}}
 
 
 @router.get("/projects/{project_id}/output")
