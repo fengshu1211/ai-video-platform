@@ -121,8 +121,8 @@ export default function VideoPage() {
       }
       message.success('视频生成任务已提交，正在自动搜图+语音合成+配字幕')
       loadData()
-    } catch {
-      message.error('提交失败')
+    } catch (e: any) {
+      message.error('提交失败：' + (e?.message || '未知错误'))
     }
   }
 
