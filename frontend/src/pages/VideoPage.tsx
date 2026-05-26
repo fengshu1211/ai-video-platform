@@ -57,31 +57,24 @@ export default function VideoPage() {
   const handleCreate = async () => {
     try {
       const values = await form.validateFields()
-      const mode = values.video_mode || 'none'
+      const mode = values.video_mode || 'image_animation'
 
-      // 模式映射
       let lip_sync_enabled = 0
       let lip_sync_mode = 'none'
       let image_animation_type: string | null = null
 
       if (mode === 'digital_human') {
-        lip_sync_enabled = 1
-        lip_sync_mode = 'digital_human'
+        lip_sync_enabled = 1; lip_sync_mode = 'digital_human'
       } else if (mode === 'lip_sync_pip') {
-        lip_sync_enabled = 1
-        lip_sync_mode = 'pip'
+        lip_sync_enabled = 1; lip_sync_mode = 'pip'
       } else if (mode === 'lip_sync_full') {
-        lip_sync_enabled = 1
-        lip_sync_mode = 'full'
+        lip_sync_enabled = 1; lip_sync_mode = 'full'
       } else if (mode === 'auto_align') {
-        lip_sync_enabled = 1
-        lip_sync_mode = 'auto_align'
+        lip_sync_enabled = 1; lip_sync_mode = 'auto_align'
       } else if (mode === 'virtual_host') {
-        lip_sync_enabled = 1
-        lip_sync_mode = 'virtual_host'
+        lip_sync_enabled = 1; lip_sync_mode = 'virtual_host'
       } else if (mode === 'audio_only') {
-        lip_sync_enabled = 1
-        lip_sync_mode = 'audio_only'
+        lip_sync_enabled = 1; lip_sync_mode = 'audio_only'
       } else if (mode === 'image_animation') {
         image_animation_type = values.animation_sub_type || 'zoom_in'
       }
@@ -95,16 +88,20 @@ export default function VideoPage() {
         lip_sync_enabled,
         lip_sync_mode,
         image_animation_type,
-
         material_paths_json: JSON.stringify(uploadedMaterials),
-        bgm_volume: values.bgm_volume ?? 0.3,
+        bgm_volume: 0.3,
       })
       message.success('项目创建成功')
       setModalOpen(false)
+      setWizardStep(0)
       setUploadedMaterials([])
       form.resetFields()
       loadData()
-    } catch { /* validation */ }
+    } catch (e: any) {
+      if (e?.errorFields) {
+        message.warning('请完善必填信息：' + e.errorFields.map((f: any) => f.name.join('/')).join('、'))
+      }
+    }
   }
 
   const handleGenerate = async (id: number) => {
