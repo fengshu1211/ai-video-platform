@@ -304,29 +304,46 @@ export default function VideoPage() {
           )}
 
           {wizardStep === 3 && (
-            <Card size="small" title="上传素材（建议）" style={{ borderRadius: 12 }}>
-              <div style={{ fontSize: 12, color: "#fbbf24", marginBottom: 8 }}>
-                上传你自己的实拍照片/视频，视频才有专属风格。不传则自动搜图。
-              </div>
-              <Upload multiple accept=".jpg,.jpeg,.png,.gif,.bmp,.webp,.mp4,.mov,.avi,.webm,.mkv"
-                action={(file: any) => "/api/upload/file?file_type=" + (file.name.match(/\.(mp4|mov|avi|webm|mkv)$/i) ? "videos" : "images")}
-                onChange={(info: any) => {
-                  if (info.file.status === "done") {
-                    const resp = info.file.response
-                    if (resp?.code === 0) {
-                      setUploadedMaterials(prev => prev.includes(resp.data.path) ? prev : [...prev, resp.data.path])
-                      message.success(info.file.name + " 上传成功")
-                    } else { message.error(info.file.name + " 失败") }
-                  }
-                }}>
-                <Button icon={<InboxOutlined />}>选择文件</Button>
-              </Upload>
+            <div>
+              <Card size="small" title="上传素材（强烈建议）" style={{ borderRadius: 12, marginBottom: 12 }}>
+                <div style={{ fontSize: 13, color: "#fbbf24", marginBottom: 12 }}>
+                  上传你自己的实拍照片和视频后，系统自动剪辑：视频去原声/变速匹配时长/加镜头动画
+                </div>
+                <Upload.Dragger
+                  multiple
+                  accept=".jpg,.jpeg,.png,.gif,.bmp,.webp,.mp4,.mov,.avi,.webm,.mkv"
+                  action={(file: any) => "/api/upload/file?file_type=" + (file.name.match(/\.(mp4|mov|avi|webm|mkv)$/i) ? "videos" : "images")}
+                  onChange={(info: any) => {
+                    if (info.file.status === "done") {
+                      const resp = info.file.response
+                      if (resp?.code === 0) {
+                        setUploadedMaterials(prev => prev.includes(resp.data.path) ? prev : [...prev, resp.data.path])
+                        message.success(info.file.name + " 上传成功")
+                      } else { message.error(info.file.name + " 失败") }
+                    }
+                  }}
+                  showUploadList={true}>
+                  <p className="ant-upload-drag-icon"><InboxOutlined style={{ fontSize: 36, color: "#3b82f6" }} /></p>
+                  <p style={{ fontSize: 14 }}>点击或拖拽上传照片/视频</p>
+                  <p style={{ fontSize: 12, color: "#94a3b8" }}>支持JPG/PNG/MP4/MOV，系统会自动处理</p>
+                </Upload.Dragger>
+              </Card>
+
               {uploadedMaterials.length > 0 && (
-                <div style={{ marginTop: 8, fontSize: 12, color: "#94a3b8" }}>
-                  已选 {uploadedMaterials.length} 个文件
+                <Card size="small" title={"已上传 " + uploadedMaterials.length + " 个素材"} style={{ borderRadius: 12, background: "rgba(16,185,129,0.05)" }}>
+                  <div style={{ fontSize: 12, color: "#94a3b8" }}>
+                    图片自动加Ken Burns动画 · 视频自动去原声/变速匹配 · 按音频时长均匀分配
+                  </div>
+                  <Button size="small" style={{ marginTop: 8 }} onClick={() => setUploadedMaterials([])}>清空重选</Button>
+                </Card>
+              )}
+
+              {uploadedMaterials.length === 0 && (
+                <div style={{ fontSize: 12, color: "#94a3b8", textAlign: "center", marginTop: 8 }}>
+                  不上传也行：系统自动根据文案全网搜索匹配图片
                 </div>
               )}
-            </Card>
+            </div>
           )}
         </Form>
 
