@@ -56,7 +56,9 @@ export default function VideoPage() {
 
   const handleCreate = async () => {
     try {
-      const values = await form.validateFields()
+      const values = form.getFieldsValue()
+      if (!values.title) { message.warning('请输入项目名称'); return }
+      if (!values.script_id) { message.warning('请选择文案'); return }
       const mode = values.video_mode || 'image_animation'
 
       let lip_sync_enabled = 0
