@@ -81,18 +81,20 @@ export default function VideoPage() {
         image_animation_type = values.animation_sub_type || 'zoom_in'
       }
 
-      await videoApi.create({
+      const payload = {
         title: values.title,
         script_id: values.script_id,
-        voice_id: values.voice_id,
-        aspect_ratio: values.aspect_ratio ?? '9:16',
+        voice_id: values.voice_id || 1,
+        aspect_ratio: values.aspect_ratio || '9:16',
         subtitle_enabled: values.subtitle_enabled ?? 1,
         lip_sync_enabled,
         lip_sync_mode,
         image_animation_type,
         material_paths_json: JSON.stringify(uploadedMaterials),
         bgm_volume: 0.3,
-      })
+      }
+      const result = await videoApi.create(payload)
+      if (!result || !result.id) { message.error('创建失败：' + JSON.stringify(result)); return }
       message.success('项目创建成功')
       setModalOpen(false)
       setWizardStep(0)
