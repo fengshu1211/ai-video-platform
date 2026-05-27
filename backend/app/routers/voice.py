@@ -2,7 +2,7 @@
 import subprocess
 import uuid
 from pathlib import Path
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
+from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile, File, Form
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 from app.models.database import get_db, VoiceProfile
@@ -11,6 +11,12 @@ from app.services.tts_service import text_to_speech, MINIMAX_VOICES, clone_voice
 from app.config import VOICES_DIR
 
 router = APIRouter(prefix="/api/voice", tags=["voice"])
+
+
+def _get_sf_key(request: Request) -> str:
+    """从请求头提取用户的硅基流动API Key"""
+    key = request.headers.get("X-SiliconFlow-Key", "").strip()
+    return key if len(key) > 10 else ""
 
 
 def get_audio_duration(file_path: Path) -> float:
@@ -42,12 +48,14 @@ def list_profiles(db: Session = Depends(get_db)):
 
 @router.post("/profiles/custom", response_model=VoiceProfileOut)
 async def upload_custom_voice(
+    request: Request,
     name: str = Form(...),
     gender: str = Form("male"),
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
 ):
     """上传自定义语音，自动进行声音复刻"""
+    sf_key = _get_sf_key(request)
     ext = Path(file.filename).suffix.lower()
     if ext not in (".mp3", ".wav", ".m4a", ".ogg"):
         raise HTTPException(400, f"不支持的音频格式：{ext}")
@@ -88,14 +96,14 @@ async def upload_custom_voice(
                 safe_name = safe_name + "_" + uuid.uuid4().hex[:4]
 
             # 优先硅基流动（免费）
-            sf_voice_uri = _upload_voice_to_siliconflow(file_path, safe_name, ref_text)
+            sf_voice_uri = _upload_voice_to_siliconflow(file_path, safe_name, ref_text, sf_key)
             if sf_voice_uri:
                 voice_id = sf_voice_uri
                 provider = "siliconflow"
                 print(f"Voice registered via SiliconFlow: {safe_name}")
             else:
                 # 降级MiniMax（付费）
-                mm_voice_id = clone_voice(file_path, safe_name)
+                mm_voice_id = clone_voice(file_path, safe_name, sf_key)
                 if mm_voice_id:
                     voice_id = mm_voice_id
                     provider = "minimax"
@@ -144,21 +152,23 @@ def delete_profile(profile_id: int, db: Session = Depends(get_db)):
 
 
 @router.post("/tts")
-def tts_synthesize(data: TTSRequest, db: Session = Depends(get_db)):
+def tts_synthesize(request: Request, data: TTSRequest, db: Session = Depends(get_db)):
     voice = db.query(VoiceProfile).filter(VoiceProfile.id == data.voice_id).first()
     if not voice:
         raise HTTPException(404, "语音不存在")
     audio_path = text_to_speech(data.text, voice.voice_id,
-                                reference_sample=voice.custom_sample_path)
+                                reference_sample=voice.custom_sample_path,
+                                sf_api_key=_get_sf_key(request))
     return FileResponse(audio_path, media_type="audio/mpeg", filename=audio_path.name)
 
 
 @router.get("/profiles/{voice_id}/preview")
-def preview_voice(voice_id: int, db: Session = Depends(get_db)):
+def preview_voice(request: Request, voice_id: int, db: Session = Depends(get_db)):
     """生成试听"""
     voice = db.query(VoiceProfile).filter(VoiceProfile.id == voice_id).first()
     if not voice:
         raise HTTPException(404, "语音不存在")
     audio_path = text_to_speech("你好，我是自媒体创作平台的AI语音助手，这是我的声音效果。",
-                                voice.voice_id, reference_sample=voice.custom_sample_path)
+                                voice.voice_id, reference_sample=voice.custom_sample_path,
+                                sf_api_key=_get_sf_key(request))
     return FileResponse(audio_path, media_type="audio/mpeg")

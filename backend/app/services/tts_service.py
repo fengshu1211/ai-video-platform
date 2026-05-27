@@ -62,13 +62,15 @@ def _preprocess_audio(input_path: Path) -> Path:
     return input_path
 
 
-def _upload_voice_to_siliconflow(audio_path: Path, voice_name: str, ref_text: str = "") -> str | None:
+def _upload_voice_to_siliconflow(audio_path: Path, voice_name: str, ref_text: str = "", sf_api_key: str = "") -> str | None:
     """上传参考音频到硅基流动，注册自定义声音，返回voice URI。
 
     使用硅基流动的 /v1/uploads/audio/voice 接口，
     上传后获得 voice URI 如 speech:name:id:hash，后续TTS直接用此URI。
+    sf_api_key 优先于系统环境变量，支持多用户各自配置Key。
     """
-    if not SILICONFLOW_API_KEY or len(SILICONFLOW_API_KEY) < 10:
+    api_key = sf_api_key or SILICONFLOW_API_KEY
+    if not api_key or len(api_key) < 10:
         print("SiliconFlow API Key not configured, skipping voice registration")
         return None
 
@@ -76,7 +78,6 @@ def _upload_voice_to_siliconflow(audio_path: Path, voice_name: str, ref_text: st
     cleaned = _preprocess_audio(audio_path)
 
     try:
-        # Step 1: Upload and register voice
         audio_b64 = base64.b64encode(cleaned.read_bytes()).decode()
         data_uri = f"data:audio/wav;base64,{audio_b64}"
 
@@ -91,7 +92,7 @@ def _upload_voice_to_siliconflow(audio_path: Path, voice_name: str, ref_text: st
             body["text"] = "这是一段用于声音复刻的参考音频，用于提取说话人的音色特征"
 
         r = requests.post(SF_UPLOAD_URL,
-            headers={"Authorization": f"Bearer {SILICONFLOW_API_KEY}", "Content-Type": "application/json"},
+            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
             json=body, timeout=120)
         if r.status_code == 200:
             result = r.json()
@@ -114,23 +115,23 @@ def _upload_voice_to_siliconflow(audio_path: Path, voice_name: str, ref_text: st
     return None
 
 
-def _get_or_create_sf_voice(audio_path: Path, voice_name: str, ref_text: str = "") -> str | None:
+def _get_or_create_sf_voice(audio_path: Path, voice_name: str, ref_text: str = "", sf_api_key: str = "") -> str | None:
     """获取或创建硅基流动自定义声音URI（带缓存）"""
     cache = _load_voice_cache()
 
-    # 用音频hash做缓存key
+    # 用音频hash+key做缓存key（不同用户的同音频对应不同URI）
     audio_hash = hashlib.md5(audio_path.read_bytes()).hexdigest()[:16]
-    cache_key = f"{voice_name}_{audio_hash}"
+    key_tag = hashlib.md5((sf_api_key or SILICONFLOW_API_KEY).encode()).hexdigest()[:6]
+    cache_key = f"{voice_name}_{audio_hash}_{key_tag}"
 
     if cache_key in cache:
         cached_uri = cache[cache_key]
         print(f"Using cached SF voice: {cached_uri[:50]}...")
         return cached_uri
 
-    uri = _upload_voice_to_siliconflow(audio_path, voice_name, ref_text)
+    uri = _upload_voice_to_siliconflow(audio_path, voice_name, ref_text, sf_api_key)
     if uri:
         cache[cache_key] = uri
-        # 只保留最近20个
         if len(cache) > 20:
             oldest = list(cache.keys())[0]
             del cache[oldest]
@@ -138,7 +139,7 @@ def _get_or_create_sf_voice(audio_path: Path, voice_name: str, ref_text: str = "
     return uri
 
 
-def clone_voice(audio_path: Path, voice_name: str) -> str | None:
+def clone_voice(audio_path: Path, voice_name: str, sf_api_key: str = "") -> str | None:
     """语音复刻：优先硅基流动CosyVoice（免费），失败降级MiniMax"""
     # 读取参考文本（ASR转写结果）
     ref_text = ""
@@ -150,7 +151,7 @@ def clone_voice(audio_path: Path, voice_name: str) -> str | None:
             pass
 
     # 硅基流动CosyVoice（首选，免费）
-    uri = _get_or_create_sf_voice(audio_path, voice_name, ref_text)
+    uri = _get_or_create_sf_voice(audio_path, voice_name, ref_text, sf_api_key)
     if uri:
         return uri
 
@@ -181,8 +182,10 @@ def clone_voice(audio_path: Path, voice_name: str) -> str | None:
 
 def text_to_speech(text: str, voice: str = "alex",
                    reference_sample: str | None = None,
-                   return_subtitles: bool = False) -> Path | tuple[Path, list[dict]]:
-    """文字转语音。CosyVoice自定义声音 > Edge-TTS预设音色"""
+                   return_subtitles: bool = False,
+                   sf_api_key: str = "") -> Path | tuple[Path, list[dict]]:
+    """文字转语音。CosyVoice自定义声音 > Edge-TTS预设音色。
+    sf_api_key 可传入用户自己的硅基Key（来自请求头），优先于系统Key。"""
 
     # 解析参考音频路径
     ref_path = None
@@ -204,7 +207,8 @@ def text_to_speech(text: str, voice: str = "alex",
 
     # ── 自定义声音：voice是硅基流动URI → 直接用 ──
     if voice.startswith("speech:") or voice.startswith("cosyvoice:"):
-        if SILICONFLOW_API_KEY and len(SILICONFLOW_API_KEY) >= 10:
+        _key = sf_api_key or SILICONFLOW_API_KEY
+        if _key and len(_key) >= 10:
             try:
                 body = {
                     "model": SF_MODEL,
@@ -214,7 +218,7 @@ def text_to_speech(text: str, voice: str = "alex",
                     "speed": 1.0,
                 }
                 r = requests.post(SF_TTS_URL,
-                    headers={"Authorization": f"Bearer {SILICONFLOW_API_KEY}", "Content-Type": "application/json"},
+                    headers={"Authorization": f"Bearer {_key}", "Content-Type": "application/json"},
                     json=body, timeout=90)
                 if r.status_code == 200 and len(r.content) > 100:
                     cache_path.write_bytes(r.content)
@@ -228,7 +232,8 @@ def text_to_speech(text: str, voice: str = "alex",
     # ── 有参考音频但voice不是URI → 尝试即时复刻 ──
     if ref_path and ref_path.exists() and not voice.startswith("speech:"):
         # 尝试用参考音频即时合成（inline reference_audio，可能不被硅基支持）
-        if SILICONFLOW_API_KEY and len(SILICONFLOW_API_KEY) >= 10:
+        _key2 = sf_api_key or SILICONFLOW_API_KEY
+        if _key2 and len(_key2) >= 10:
             try:
                 ref_b64 = base64.b64encode(ref_path.read_bytes()).decode()
                 body = {
@@ -239,7 +244,7 @@ def text_to_speech(text: str, voice: str = "alex",
                     "reference_audio": ref_b64,
                 }
                 r = requests.post(SF_TTS_URL,
-                    headers={"Authorization": f"Bearer {SILICONFLOW_API_KEY}", "Content-Type": "application/json"},
+                    headers={"Authorization": f"Bearer {_key2}", "Content-Type": "application/json"},
                     json=body, timeout=90)
                 if r.status_code == 200 and len(r.content) > 100:
                     cache_path.write_bytes(r.content)
