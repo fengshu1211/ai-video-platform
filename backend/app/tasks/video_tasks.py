@@ -39,13 +39,15 @@ def _generate_video_impl(project_id: int, _celery_id: str = "", _db=None):
         if not script_text:
             return {"status": "failed", "error": "没有找到文案内容"}
 
-        # 获取语音：默认音色+自定义样本（CosyVoice用reference_audio复刻）
+        # 获取语音：硅基流动URI直接用 > 自定义样本 > 预设音色
         voice_id = "alex"
         custom_sample = None
         if project.voice_id:
             voice = db.query(VoiceProfile).filter(VoiceProfile.id == project.voice_id).first()
             if voice:
-                if voice.is_custom and voice.custom_sample_path:
+                if voice.voice_id.startswith("speech:") or voice.voice_id.startswith("cosyvoice:"):
+                    voice_id = voice.voice_id  # 硅基流动已注册的URI，直接用
+                elif voice.is_custom and voice.custom_sample_path:
                     custom_sample = voice.custom_sample_path
                 elif voice.voice_id and not voice.voice_id.startswith("custom:"):
                     voice_id = voice.voice_id

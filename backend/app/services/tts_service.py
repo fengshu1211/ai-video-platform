@@ -1,22 +1,23 @@
-"""TTS语音合成 — 硅基流动CosyVoice（免费+声音复刻） + MiniMax兜底"""
+"""TTS语音合成 — 硅基流动CosyVoice（免费声音复刻）+ Edge-TTS（免费预设）"""
 import base64
 import hashlib
+import json
+import subprocess
+import tempfile
 from pathlib import Path
 import requests
 from app.config import AUDIO_DIR, SILICONFLOW_API_KEY
 
-# 硅基流动 CosyVoice（主力，免费）
 SF_TTS_URL = "https://api.siliconflow.cn/v1/audio/speech"
+SF_UPLOAD_URL = "https://api.siliconflow.cn/v1/uploads/audio/voice"
 SF_MODEL = "FunAudioLLM/CosyVoice2-0.5B"
-SF_DEFAULT_VOICE = f"{SF_MODEL}:alex"
+SF_VOICE_CACHE = AUDIO_DIR.parent / "sf_voice_cache.json"
 
-# MiniMax（兜底，付费）
 MINIMAX_API_KEY = "sk-api-ZNMkMxUy-FT0Cp0Rmx9X9xNta5OdkRmapbwdammrJtzu3virBa6gEXI5BqH4oV72Mg7iWH3GCAjpYgIDqDAsr5ml8_KX1O6LJLFb7gJUrDVVXfoC44CeQLY"
 MINIMAX_TTS_URL = "https://api.minimaxi.com/v1/t2a_v2"
 MINIMAX_UPLOAD_URL = "https://api.minimaxi.com/v1/files/upload"
 MINIMAX_CLONE_URL = "https://api.minimaxi.com/v1/voice_clone"
 
-# 预置音色（Edge-TTS免费微软中文语音）
 VOICE_LIST = [
     {"id": "zh-CN-XiaoxiaoNeural", "name": "晓晓", "gender": "female", "style": "活泼甜美的少女声"},
     {"id": "zh-CN-XiaoyiNeural", "name": "晓伊", "gender": "female", "style": "温柔知性女声"},
@@ -27,13 +28,133 @@ VOICE_LIST = [
     {"id": "zh-CN-liaoning-XiaobeiNeural", "name": "晓北（东北话）", "gender": "female", "style": "东北方言女声"},
     {"id": "zh-CN-shaanxi-XiaoniNeural", "name": "晓妮（陕西话）", "gender": "female", "style": "陕西方言女声"},
 ]
-# 兼容旧导入
 MINIMAX_VOICES = VOICE_LIST
 
 
+def _load_voice_cache() -> dict:
+    """加载声音URI缓存"""
+    if SF_VOICE_CACHE.exists():
+        try:
+            return json.loads(SF_VOICE_CACHE.read_text())
+        except Exception:
+            return {}
+    return {}
+
+
+def _save_voice_cache(cache: dict):
+    SF_VOICE_CACHE.write_text(json.dumps(cache, ensure_ascii=False))
+
+
+def _preprocess_audio(input_path: Path) -> Path:
+    """预处理参考音频：降噪→16kHz单声道→去静音→音量归一化"""
+    output_path = input_path.with_suffix(".wav")
+    try:
+        result = subprocess.run([
+            "ffmpeg", "-y", "-i", str(input_path),
+            "-af", "afftdn,highpass=f=80,lowpass=f=8000,silenceremove=start_periods=1:stop_periods=-1:stop_threshold=-35dB,loudnorm",
+            "-ar", "16000", "-ac", "1", "-sample_fmt", "s16",
+            str(output_path),
+        ], capture_output=True, text=True, timeout=60)
+        if output_path.exists() and output_path.stat().st_size > 1000:
+            return output_path
+    except Exception as e:
+        print(f"Audio preprocessing failed: {e}")
+    return input_path
+
+
+def _upload_voice_to_siliconflow(audio_path: Path, voice_name: str, ref_text: str = "") -> str | None:
+    """上传参考音频到硅基流动，注册自定义声音，返回voice URI。
+
+    使用硅基流动的 /v1/uploads/audio/voice 接口，
+    上传后获得 voice URI 如 speech:name:id:hash，后续TTS直接用此URI。
+    """
+    if not SILICONFLOW_API_KEY or len(SILICONFLOW_API_KEY) < 10:
+        print("SiliconFlow API Key not configured, skipping voice registration")
+        return None
+
+    # 预处理音频
+    cleaned = _preprocess_audio(audio_path)
+
+    try:
+        # Step 1: Upload and register voice
+        audio_b64 = base64.b64encode(cleaned.read_bytes()).decode()
+        data_uri = f"data:audio/wav;base64,{audio_b64}"
+
+        body = {
+            "model": SF_MODEL,
+            "customName": voice_name,
+            "audio": data_uri,
+        }
+        if ref_text:
+            body["text"] = ref_text
+        else:
+            body["text"] = "这是一段用于声音复刻的参考音频，用于提取说话人的音色特征"
+
+        r = requests.post(SF_UPLOAD_URL,
+            headers={"Authorization": f"Bearer {SILICONFLOW_API_KEY}", "Content-Type": "application/json"},
+            json=body, timeout=120)
+        if r.status_code == 200:
+            result = r.json()
+            uri = result.get("uri") or result.get("voice") or result.get("voice_uri")
+            if uri:
+                print(f"SiliconFlow voice registered: {voice_name} -> {uri[:50]}...")
+                return uri
+            print(f"Upload response missing URI: {json.dumps(result, ensure_ascii=False)[:300]}")
+        else:
+            print(f"SiliconFlow upload failed: {r.status_code} {r.text[:300]}")
+
+    except Exception as e:
+        print(f"SiliconFlow upload error: {e}")
+
+    finally:
+        # 清理预处理文件
+        if cleaned != audio_path and cleaned.exists():
+            cleaned.unlink(missing_ok=True)
+
+    return None
+
+
+def _get_or_create_sf_voice(audio_path: Path, voice_name: str, ref_text: str = "") -> str | None:
+    """获取或创建硅基流动自定义声音URI（带缓存）"""
+    cache = _load_voice_cache()
+
+    # 用音频hash做缓存key
+    audio_hash = hashlib.md5(audio_path.read_bytes()).hexdigest()[:16]
+    cache_key = f"{voice_name}_{audio_hash}"
+
+    if cache_key in cache:
+        cached_uri = cache[cache_key]
+        print(f"Using cached SF voice: {cached_uri[:50]}...")
+        return cached_uri
+
+    uri = _upload_voice_to_siliconflow(audio_path, voice_name, ref_text)
+    if uri:
+        cache[cache_key] = uri
+        # 只保留最近20个
+        if len(cache) > 20:
+            oldest = list(cache.keys())[0]
+            del cache[oldest]
+        _save_voice_cache(cache)
+    return uri
+
+
 def clone_voice(audio_path: Path, voice_name: str) -> str | None:
-    """语音复刻：优先MiniMax（持久化voice_id），失败则返回None（TTS时用base64）"""
-    # MiniMax正式复刻
+    """语音复刻：优先硅基流动CosyVoice（免费），失败降级MiniMax"""
+    # 读取参考文本（ASR转写结果）
+    ref_text = ""
+    ref_text_path = audio_path.with_suffix(".txt")
+    if ref_text_path.exists():
+        try:
+            ref_text = ref_text_path.read_text(encoding="utf-8").strip()
+        except Exception:
+            pass
+
+    # 硅基流动CosyVoice（首选，免费）
+    uri = _get_or_create_sf_voice(audio_path, voice_name, ref_text)
+    if uri:
+        return uri
+
+    # MiniMax兜底
     try:
         with open(audio_path, "rb") as f:
             resp = requests.post(MINIMAX_UPLOAD_URL,
@@ -47,35 +168,33 @@ def clone_voice(audio_path: Path, voice_name: str) -> str | None:
                 resp2 = requests.post(MINIMAX_CLONE_URL,
                     headers={"Authorization": f"Bearer {MINIMAX_API_KEY}", "Content-Type": "application/json"},
                     json={"file_id": file_id, "voice_id": voice_name,
-                          "need_noise_reduction": False, "need_volume_normalization": True,
+                          "need_noise_reduction": True, "need_volume_normalization": True,
                           "language_boost": "Chinese"},
                     timeout=120)
                 if resp2.json().get("base_resp", {}).get("status_code") == 0:
-                    print(f"MiniMax voice cloned: {voice_name}")
                     return voice_name
     except Exception as e:
         print(f"MiniMax clone failed: {e}")
 
-    # MiniMax失败则返回特殊标记，TTS时用CosyVoice base64复刻
-    print(f"MiniMax clone unavailable, will use CosyVoice inline cloning")
     return None
 
 
 def text_to_speech(text: str, voice: str = "alex",
                    reference_sample: str | None = None,
                    return_subtitles: bool = False) -> Path | tuple[Path, list[dict]]:
-    """文字转语音。CosyVoice主力（免费），MiniMax兜底"""
+    """文字转语音。CosyVoice自定义声音 > Edge-TTS预设音色"""
 
-    # 解析参考音频
-    ref_b64 = None
+    # 解析参考音频路径
+    ref_path = None
     if reference_sample:
         ref_path = Path(reference_sample)
         if not ref_path.is_absolute():
             ref_path = AUDIO_DIR.parent / reference_sample
-        if ref_path.exists():
-            ref_b64 = base64.b64encode(ref_path.read_bytes()).decode()
 
-    ref_tag = hashlib.md5(ref_b64.encode()).hexdigest()[:8] if ref_b64 else ""
+    # 缓存key
+    ref_tag = ""
+    if ref_path and ref_path.exists():
+        ref_tag = hashlib.md5(ref_path.read_bytes()).hexdigest()[:8]
     cache_hash = hashlib.md5(f"cosy|{text}|{voice}|{ref_tag}".encode()).hexdigest()
     cache_path = AUDIO_DIR / f"tts_{cache_hash}.mp3"
     if cache_path.exists():
@@ -83,30 +202,55 @@ def text_to_speech(text: str, voice: str = "alex",
 
     subtitles = []
 
-    # ── 有参考音频 → CosyVoice复刻（免费）──
-    if ref_b64:
-        try:
-            body = {
-                "model": SF_MODEL,
-                "input": text,
-                "voice": f"{SF_MODEL}:alex",
-                "response_format": "mp3",
-                "reference_audio": ref_b64,
-            }
-            r = requests.post(SF_TTS_URL,
-                headers={"Authorization": f"Bearer {SILICONFLOW_API_KEY}", "Content-Type": "application/json"},
-                json=body, timeout=90)
-            if r.status_code == 200 and len(r.content) > 100:
-                cache_path.write_bytes(r.content)
-                return cache_path if not return_subtitles else (cache_path, subtitles)
-            print(f"CosyVoice clone failed: {r.status_code} {r.text[:200]}")
-        except Exception as e:
-            print(f"CosyVoice clone error: {e}")
+    # ── 自定义声音：voice是硅基流动URI → 直接用 ──
+    if voice.startswith("speech:") or voice.startswith("cosyvoice:"):
+        if SILICONFLOW_API_KEY and len(SILICONFLOW_API_KEY) >= 10:
+            try:
+                body = {
+                    "model": SF_MODEL,
+                    "input": text,
+                    "voice": voice,
+                    "response_format": "mp3",
+                    "speed": 1.0,
+                }
+                r = requests.post(SF_TTS_URL,
+                    headers={"Authorization": f"Bearer {SILICONFLOW_API_KEY}", "Content-Type": "application/json"},
+                    json=body, timeout=90)
+                if r.status_code == 200 and len(r.content) > 100:
+                    cache_path.write_bytes(r.content)
+                    return cache_path if not return_subtitles else (cache_path, subtitles)
+                print(f"SF voice TTS failed: {r.status_code} {r.text[:200]}")
+            except Exception as e:
+                print(f"SF voice TTS error: {e}")
+        else:
+            print("SiliconFlow API Key not configured, cannot use custom voice")
 
-    # ── 预设音色 → Edge-TTS（微软免费，8种中文语音）──
+    # ── 有参考音频但voice不是URI → 尝试即时复刻 ──
+    if ref_path and ref_path.exists() and not voice.startswith("speech:"):
+        # 尝试用参考音频即时合成（inline reference_audio，可能不被硅基支持）
+        if SILICONFLOW_API_KEY and len(SILICONFLOW_API_KEY) >= 10:
+            try:
+                ref_b64 = base64.b64encode(ref_path.read_bytes()).decode()
+                body = {
+                    "model": SF_MODEL,
+                    "input": text,
+                    "voice": f"{SF_MODEL}:alex",
+                    "response_format": "mp3",
+                    "reference_audio": ref_b64,
+                }
+                r = requests.post(SF_TTS_URL,
+                    headers={"Authorization": f"Bearer {SILICONFLOW_API_KEY}", "Content-Type": "application/json"},
+                    json=body, timeout=90)
+                if r.status_code == 200 and len(r.content) > 100:
+                    cache_path.write_bytes(r.content)
+                    return cache_path if not return_subtitles else (cache_path, subtitles)
+                print(f"CosyVoice inline clone failed: {r.status_code} {r.text[:200]}")
+            except Exception as e:
+                print(f"CosyVoice inline clone error: {e}")
+
+    # ── 预设音色 → Edge-TTS（微软免费）──
     edge_voice = voice if voice.startswith("zh-CN") else "zh-CN-YunxiNeural"
     try:
-        import subprocess, tempfile
         tmp_mp3 = tempfile.mktemp(suffix=".mp3")
         result = subprocess.run([
             "edge-tts", "--voice", edge_voice, "--text", text,
@@ -122,5 +266,4 @@ def text_to_speech(text: str, voice: str = "alex",
     except Exception as e:
         print(f"Edge-TTS error: {e}")
 
-    # 全失败：抛异常
     raise RuntimeError(f"TTS failed for text: {text[:50]}...")

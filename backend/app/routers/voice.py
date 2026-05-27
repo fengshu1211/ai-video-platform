@@ -7,7 +7,7 @@ from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 from app.models.database import get_db, VoiceProfile
 from app.schemas.voice import VoiceProfileOut, TTSRequest
-from app.services.tts_service import text_to_speech, MINIMAX_VOICES, clone_voice
+from app.services.tts_service import text_to_speech, MINIMAX_VOICES, clone_voice, _upload_voice_to_siliconflow
 from app.config import VOICES_DIR
 
 router = APIRouter(prefix="/api/voice", tags=["voice"])
@@ -57,17 +57,28 @@ async def upload_custom_voice(
     content = await file.read()
     file_path.write_bytes(content)
 
-    # 检查时长（MiniMax语音复刻要求≥10秒）
+    # 检查时长（CosyVoice推荐≥3秒清晰语音）
     duration = get_audio_duration(file_path)
-    if duration > 0 and duration < 9.5:
+    if duration > 0 and duration < 2.5:
         file_path.unlink(missing_ok=True)
-        raise HTTPException(400, f"音频时长仅 {duration:.1f} 秒，至少需要 10 秒（MiniMax官方要求）")
+        raise HTTPException(400, f"音频时长仅 {duration:.1f} 秒，至少需要 3 秒清晰语音")
 
-    # MiniMax声音复刻（调用官方API：上传→复刻→返回voice_id）
-    voice_id = f"custom:{new_name}"
+    # ASR转写参考文本
+    ref_text = ""
+    try:
+        from app.services.asr_service import transcribe_audio
+        ref_text = transcribe_audio(file_path)
+        file_path.with_suffix(".txt").write_text(ref_text, encoding="utf-8")
+    except Exception:
+        pass
+
+    # 硅基流动CosyVoice声音复刻（免费，首选）
+    sf_voice_uri = None
     provider = "custom"
     is_custom = 1
-    if duration >= 9.5 or duration == 0:
+    voice_id = f"custom:{new_name}"
+
+    if duration >= 3.0 or duration == 0:
         try:
             import re
             safe_name = re.sub(r'[^a-zA-Z0-9_-]', '', name.replace(" ", "_"))[:30]
@@ -75,20 +86,21 @@ async def upload_custom_voice(
                 safe_name = "voice_" + (safe_name or uuid.uuid4().hex[:8])
             if len(safe_name) < 8:
                 safe_name = safe_name + "_" + uuid.uuid4().hex[:4]
-            mm_voice_id = clone_voice(file_path, safe_name)
-            if mm_voice_id:
-                voice_id = mm_voice_id
-                provider = "minimax"
+
+            # 优先硅基流动（免费）
+            sf_voice_uri = _upload_voice_to_siliconflow(file_path, safe_name, ref_text)
+            if sf_voice_uri:
+                voice_id = sf_voice_uri
+                provider = "siliconflow"
+                print(f"Voice registered via SiliconFlow: {safe_name}")
+            else:
+                # 降级MiniMax（付费）
+                mm_voice_id = clone_voice(file_path, safe_name)
+                if mm_voice_id:
+                    voice_id = mm_voice_id
+                    provider = "minimax"
         except Exception as e:
             print(f"Clone error: {e}")
-
-    # ASR转写参考文本
-    try:
-        from app.services.asr_service import transcribe_audio
-        ref_text = transcribe_audio(file_path)
-        file_path.with_suffix(".txt").write_text(ref_text, encoding="utf-8")
-    except Exception:
-        pass
 
     profile = VoiceProfile(
         name=name, provider=provider, voice_id=voice_id,
@@ -136,7 +148,8 @@ def tts_synthesize(data: TTSRequest, db: Session = Depends(get_db)):
     voice = db.query(VoiceProfile).filter(VoiceProfile.id == data.voice_id).first()
     if not voice:
         raise HTTPException(404, "语音不存在")
-    audio_path = text_to_speech(data.text, voice.voice_id)
+    audio_path = text_to_speech(data.text, voice.voice_id,
+                                reference_sample=voice.custom_sample_path)
     return FileResponse(audio_path, media_type="audio/mpeg", filename=audio_path.name)
 
 
@@ -146,5 +159,6 @@ def preview_voice(voice_id: int, db: Session = Depends(get_db)):
     voice = db.query(VoiceProfile).filter(VoiceProfile.id == voice_id).first()
     if not voice:
         raise HTTPException(404, "语音不存在")
-    audio_path = text_to_speech("你好，我是自媒体创作平台的AI语音助手，这是我的声音效果。", voice.voice_id)
+    audio_path = text_to_speech("你好，我是自媒体创作平台的AI语音助手，这是我的声音效果。",
+                                voice.voice_id, reference_sample=voice.custom_sample_path)
     return FileResponse(audio_path, media_type="audio/mpeg")
