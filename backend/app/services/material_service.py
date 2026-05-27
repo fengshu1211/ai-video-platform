@@ -51,15 +51,35 @@ def _search_pixabay_images(query: str, per_page: int = 5) -> list[dict]:
 
 
 def download_image(url: str, img_id: str) -> Path:
-    """下载图片到本地，返回路径"""
+    """下载图片到本地，校验有效性后返回路径"""
     cache_path = VIDEOS_DIR.parent / "images" / f"{img_id}.jpg"
-    if cache_path.exists():
+    if cache_path.exists() and cache_path.stat().st_size > 500:
         return cache_path
-    resp = httpx.get(url, timeout=30, follow_redirects=True)
-    resp.raise_for_status()
-    cache_path.parent.mkdir(parents=True, exist_ok=True)
-    cache_path.write_bytes(resp.content)
-    return cache_path
+    try:
+        resp = httpx.get(url, timeout=30, follow_redirects=True)
+        resp.raise_for_status()
+        content = resp.content
+        # 校验：大小>500字节 且 是有效图片格式
+        if len(content) < 500:
+            raise ValueError(f"Downloaded file too small: {len(content)} bytes")
+        # 检查magic bytes
+        magic = content[:4]
+        valid_magics = {
+            b'\xff\xd8\xff': 'jpg',      # JPEG
+            b'\x89PNG': 'png',           # PNG
+            b'GIF8': 'gif',              # GIF
+            b'RIFF': 'webp',             # WebP
+            b'BM': 'bmp',                # BMP
+        }
+        is_valid = any(magic.startswith(k) for k in valid_magics)
+        if not is_valid:
+            raise ValueError(f"Invalid image magic bytes: {magic.hex()[:20]}")
+        cache_path.parent.mkdir(parents=True, exist_ok=True)
+        cache_path.write_bytes(content)
+        return cache_path
+    except Exception as e:
+        print(f"[material_service] 下载图片失败 {url[:60]}: {e}")
+        raise
 
 
 def search_videos(query: str, per_page: int = 8) -> list[dict]:

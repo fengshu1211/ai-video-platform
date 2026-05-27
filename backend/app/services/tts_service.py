@@ -31,6 +31,32 @@ VOICE_LIST = [
 MINIMAX_VOICES = VOICE_LIST
 
 
+def _parse_srt(srt_path: str) -> list[dict]:
+    """解析SRT字幕文件，返回 [{\"start\": 1.2, \"end\": 3.5, \"text\": \"...\"}, ...]"""
+    import re
+    subtitles = []
+    try:
+        content = Path(srt_path).read_text(encoding="utf-8")
+        blocks = content.strip().split("\n\n")
+        for block in blocks:
+            lines = block.strip().split("\n")
+            if len(lines) >= 3:
+                time_match = re.match(r"(\d+:\d+:\d+[\.,]\d+)\s*-->\s*(\d+:\d+:\d+[\.,]\d+)", lines[1])
+                if time_match:
+                    def _to_sec(t):
+                        t = t.replace(",", ".")
+                        h, m, s = t.split(":")
+                        return int(h) * 3600 + int(m) * 60 + float(s)
+                    start = _to_sec(time_match.group(1))
+                    end = _to_sec(time_match.group(2))
+                    text = "".join(lines[2:]).strip()
+                    if text:
+                        subtitles.append({"start": start, "end": end, "text": text})
+    except Exception as e:
+        print(f"SRT parse failed: {e}")
+    return subtitles
+
+
 def _load_voice_cache() -> dict:
     """加载声音URI缓存"""
     if SF_VOICE_CACHE.exists():
@@ -253,20 +279,31 @@ def text_to_speech(text: str, voice: str = "alex",
             except Exception as e:
                 print(f"CosyVoice inline clone error: {e}")
 
-    # ── 预设音色 → Edge-TTS（微软免费）──
+    # ── 预设音色 → Edge-TTS（微软免费，自带文本对齐）──
     edge_voice = voice if voice.startswith("zh-CN") else "zh-CN-YunxiNeural"
     try:
         tmp_mp3 = tempfile.mktemp(suffix=".mp3")
+        tmp_srt = tempfile.mktemp(suffix=".srt")
         result = subprocess.run([
             "edge-tts", "--voice", edge_voice, "--text", text,
             "--write-media", tmp_mp3,
+            "--write-subtitles", tmp_srt,
         ], capture_output=True, text=True, timeout=120)
         if result.returncode == 0 and Path(tmp_mp3).exists():
             data = Path(tmp_mp3).read_bytes()
             Path(tmp_mp3).unlink(missing_ok=True)
+
+            # 解析SRT字幕
+            srt_data = _parse_srt(tmp_srt) if Path(tmp_srt).exists() else []
+            Path(tmp_srt).unlink(missing_ok=True)
+
+            if return_subtitles and srt_data:
+                subtitles = srt_data
+
             cache_path.write_bytes(data)
             return cache_path if not return_subtitles else (cache_path, subtitles)
         Path(tmp_mp3).unlink(missing_ok=True)
+        Path(tmp_srt).unlink(missing_ok=True)
         print(f"Edge-TTS failed: {result.stderr[:200]}")
     except Exception as e:
         print(f"Edge-TTS error: {e}")

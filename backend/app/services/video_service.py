@@ -276,7 +276,14 @@ def generate_video(
     final_output = OUTPUTS_DIR / f"final_{speech_path.stem}{mode_suffix}.mp4"
     if subtitle_enabled:
         report(90, "正在生成字幕...")
-        sub_list = _split_text_to_subtitles(spoken_text, speech_duration)
+        # 优先用TTS返回的精确时间戳（Edge-TTS自带文本对齐），空则估算兜底
+        tts_subtitles = mini_subtitles if (mini_subtitles and len(mini_subtitles) > 0) else []
+        if tts_subtitles:
+            sub_list = tts_subtitles
+            report(92, f"使用TTS精确字幕（{len(sub_list)}句）")
+        else:
+            sub_list = _split_text_to_subtitles(spoken_text, speech_duration)
+            report(92, f"使用估算字幕（{len(sub_list)}句）")
         # 强制最后一条延伸到结尾
         if sub_list:
             sub_list[-1]["end"] = speech_duration
@@ -544,69 +551,4 @@ def _build_drawtext_vf(subtitles: list[dict], width: int, height: int, total_dur
             )
             filters.append(f)
 
-    return ",".join(filters)
-    # 竖屏16字/行/3行（608px≈屏宽56%），横屏自适应
-    is_vertical = height > width
-    if is_vertical:
-        font_size = 38
-        max_chars = 16
-        max_lines = 3
-    else:
-        font_size = max(28, int(height * 0.035))
-        max_chars = max(20, int(width * 0.85 / font_size))
-        max_lines = 3
-
-    import platform as _pf
-    fontfile = "C\\:/Windows/Fonts/simhei.ttf" if _pf.system() == "Windows" else "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc"
-    line_height = int(font_size * 1.3)
-    y_base = int(height * 0.78)
-
-    pre_buffer = 0.0
-    post_buffer = 0.10
-    timed_segments = []
-    for sub in subtitles:
-        text = sub["text"]
-        lines = _wrap_text(text, max_chars)
-        # 硬上限
-        if len(lines) > max_lines:
-            lines = lines[:max_lines]
-            lines[-1] = lines[-1][:max_chars - 1] + "…"
-
-        seg_start = max(0, sub["start"] - pre_buffer)
-        seg_end = min(sub["end"] + post_buffer, total_dur)
-        timed_segments.append({"lines": lines, "start": seg_start, "end": seg_end})
-
-    filters = []
-    for seg in timed_segments:
-        seg_lines = seg["lines"]
-        start = seg["start"]
-        end = seg["end"]
-        dur = end - start
-        fade_dur = min(0.3, dur * 0.2) if dur > 0.4 else 0
-        n_lines = len(seg_lines)
-
-        for li, line in enumerate(seg_lines):
-            txt = _escape_drawtext(line)
-            row_y = y_base + li * line_height - (n_lines - 1) * line_height // 2
-
-            if fade_dur > 0:
-                alpha_expr = f"if(lt(t-{start:.2f},{fade_dur:.2f}),(t-{start:.2f})/{fade_dur:.2f},if(lt(t,{end:.2f}-{fade_dur:.2f}),1,({end:.2f}-t)/{fade_dur:.2f}))"
-                alpha_part = f"alpha='{alpha_expr}':"
-            else:
-                alpha_part = ""
-
-            f = (
-                f"drawtext=fontfile='{fontfile}':"
-                f"text='{txt}':"
-                f"fontsize={font_size}:"
-                f"fontcolor=white:"
-                f"borderw=3:"
-                f"bordercolor=black:"
-                f"shadowx=2:shadowy=2:shadowcolor=black@0.6:"
-                f"x=(w-tw)/2:"
-                f"y={row_y}:"
-                f"{alpha_part}"
-                f"enable='between(t,{start:.2f},{end:.2f})'"
-            )
-            filters.append(f)
     return ",".join(filters)

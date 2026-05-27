@@ -76,7 +76,8 @@ def _generate_video_impl(project_id: int, _celery_id: str = "", _db=None):
             from app.services.ai_service import plan_visual_materials, extract_keywords_and_mood
             visual_plan = plan_visual_materials(script_text)
             mood_analysis = extract_keywords_and_mood(script_text)
-        except Exception:
+        except Exception as e:
+            print(f"[video_tasks] AI导演分镜失败: {e}")
             visual_plan = {"segments": [], "mood": "calm"}
             mood_analysis = {"mood": "calm", "mood_cn": "平静", "scene_type": "historical"}
 
@@ -99,7 +100,7 @@ def _generate_video_impl(project_id: int, _celery_id: str = "", _db=None):
 
         report(15, f"AI导演：{overall_theme or '已理解全文'}，{len(segments)}个视觉段落")
 
-        # ─── 2. 获取素材：AI分析场景类型，智能选择生图/搜视频 ───
+        # ─── 2. 获取素材：AI生图优先 → Pexels搜图备用 → 纯色兜底 ───
         material_paths = []
         material_paths_json = project.material_paths_json or "[]"
         try:
@@ -111,44 +112,80 @@ def _generate_video_impl(project_id: int, _celery_id: str = "", _db=None):
             material_paths = existing_materials
             report(30, f"使用已有 {len(material_paths)} 个素材")
         else:
-            # AI导演分镜模式：每个段落指定 ai_image 或 video_search
+            # 准备场景描述（供AI生图用）
+            scene_descriptions = []
             if segments:
-                # 全部用Pexels/Pixabay搜图+搜视频，按AI导演关键词
-                report(20, f"正在搜索素材（{len(segments)}个段落）...")
-                from app.services.material_service import search_images, download_image, search_videos, download_video as dl_video
-
                 for seg in segments:
-                    seg_kw = (seg.get("keywords_en", []) or [])[:2] + (seg.get("keywords_cn", []) or [])[:1]
-                    if not seg_kw:
-                        continue
-                    # 优先搜图（稳定快速），每个关键词搜2张
-                    for kw in seg_kw[:3]:
-                        try:
-                            imgs = search_images(kw, per_page=2)
+                    desc = seg.get("description", "") or seg.get("scene_cn", "") or ", ".join(seg.get("keywords_cn", [])[:3])
+                    if desc:
+                        scene_descriptions.append(desc)
+            if not scene_descriptions and all_keywords:
+                scene_descriptions = [", ".join(all_keywords[:3])]
+
+            # ── 方案A：通义万相AI生图（主方案，理解中文历史场景）──
+            ai_images = []
+            report(18, "AI正在生成场景图...")
+            try:
+                from app.services.image_service import generate_scene_images
+                # 用场景描述或脚本摘要生图
+                prompts = scene_descriptions[:5] if scene_descriptions else [script_text[:200]]
+                for prompt in prompts:
+                    try:
+                        imgs = generate_scene_images(prompt, count=1)
+                        for img in imgs:
+                            rel = str(img.relative_to(img.parent.parent))
+                            material_paths.append(rel)
+                            ai_images.append(rel)
+                    except Exception as e:
+                        print(f"[video_tasks] AI生图失败[{prompt[:30]}...]: {e}")
+                if ai_images:
+                    report(25, f"AI生成了 {len(ai_images)} 张场景图")
+            except Exception as e:
+                print(f"[video_tasks] 通义万相不可用: {e}")
+
+            # ── 方案B：Pexels/Pixabay搜图补充 ──
+            if len(material_paths) < 5:
+                report(30, f"搜图补充中（{len(all_keywords)}个关键词）...")
+                from app.services.material_service import search_images, download_image
+                for kw in all_keywords[:6]:
+                    try:
+                        imgs = search_images(kw, per_page=2)
+                        if imgs:
                             for img in imgs[:2]:
-                                path = download_image(img["download_url"], img["id"])
-                                material_paths.append(str(path.relative_to(path.parent.parent)))
-                        except Exception:
-                            pass
-                    if len(material_paths) >= 10:
+                                try:
+                                    path = download_image(img["download_url"], img["id"])
+                                    if path and path.stat().st_size > 500:
+                                        material_paths.append(str(path.relative_to(path.parent.parent)))
+                                except Exception as e:
+                                    print(f"[video_tasks] 下载图片失败 {img.get('id')}: {e}")
+                        else:
+                            print(f"[video_tasks] Pexels对关键词'{kw}'无结果")
+                    except Exception as e:
+                        print(f"[video_tasks] 搜索关键词'{kw}'失败: {e}")
+                    if len(material_paths) >= 8:
                         break
 
-                # 不足时视频搜索补充
-                if len(material_paths) < 5:
-                    report(30, "视频搜索补充...")
+                # 搜视频补充
+                if len(material_paths) < 4:
+                    report(35, "视频搜索补充...")
                     _search_and_download(all_keywords, material_paths)
-            else:
-                # 无AI规划时回退：通义万相5张 + 视频搜索
-                report(20, "通义万相生成保底图...")
+
+            # ── 方案C：AI一段段再补生图（针对历史类文案搜不到图的情况）──
+            if len(material_paths) < 2:
+                report(40, "素材不足，AI扩增生成...")
                 try:
-                    from app.services.image_service import generate_scene_images as wanxiang_images
-                    wx_images = wanxiang_images(script_text, count=5)
-                    for img in wx_images:
-                        material_paths.append(str(img.relative_to(img.parent.parent)))
+                    from app.services.image_service import generate_scene_images
+                    for desc in (scene_descriptions or [script_text[:200]]):
+                        try:
+                            imgs = generate_scene_images(desc, count=2)
+                            for img in imgs:
+                                material_paths.append(str(img.relative_to(img.parent.parent)))
+                        except Exception:
+                            pass
+                        if len(material_paths) >= 4:
+                            break
                 except Exception as e:
-                    print(f"Wanxiang failed: {e}")
-                report(25, "视频搜索补充...")
-                _search_and_download(all_keywords, material_paths)
+                    print(f"[video_tasks] 扩增生成失败: {e}")
 
             report(45, f"共准备 {len(material_paths)} 个素材")
 
@@ -261,15 +298,19 @@ def _search_and_download(keywords: list[str], material_paths: list[str]):
     for kw in keywords[:5]:
         try:
             results = search_videos(kw, per_page=3)
+            if not results:
+                print(f"[video_tasks] 视频搜索'{kw}'无结果")
+                continue
             for v in results:
                 if v["id"] not in searched_ids:
                     searched_ids.add(v["id"])
                     try:
                         path = download_video(v["download_url"], v["id"])
-                        material_paths.append(str(path.relative_to(path.parent.parent)))
-                    except Exception:
-                        pass
+                        if path and path.stat().st_size > 1000:
+                            material_paths.append(str(path.relative_to(path.parent.parent)))
+                    except Exception as e:
+                        print(f"[video_tasks] 下载视频失败 {v.get('id')}: {e}")
             if len(material_paths) >= 5:
                 break
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"[video_tasks] 视频搜索'{kw}'异常: {e}")
