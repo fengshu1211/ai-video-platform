@@ -52,10 +52,10 @@ def _generate_video_impl(project_id: int, _celery_id: str = "", _db=None):
                 elif voice.voice_id and not voice.voice_id.startswith("custom:"):
                     voice_id = voice.voice_id
 
-        # 任务追踪
+        # 任务追踪（取最新记录，避免前端拿到旧任务ID）
         task_record = db.query(AsyncTask).filter(
             AsyncTask.ref_id == project_id, AsyncTask.task_type == "video_generation"
-        ).first()
+        ).order_by(AsyncTask.id.desc()).first()
         if not task_record:
             task_record = AsyncTask(task_type="video_generation", ref_id=project_id, celery_task_id=_celery_id)
             db.add(task_record)
