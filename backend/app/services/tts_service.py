@@ -279,33 +279,113 @@ def text_to_speech(text: str, voice: str = "alex",
             except Exception as e:
                 print(f"CosyVoice inline clone error: {e}")
 
-    # ── 预设音色 → Edge-TTS（微软免费，自带文本对齐）──
+    # ── 预设音色 → Edge-TTS（短句拆分提升对齐精度）──
     edge_voice = voice if voice.startswith("zh-CN") else "zh-CN-YunxiNeural"
     try:
-        tmp_mp3 = tempfile.mktemp(suffix=".mp3")
-        tmp_srt = tempfile.mktemp(suffix=".srt")
-        result = subprocess.run([
-            "edge-tts", "--voice", edge_voice, "--text", text,
-            "--write-media", tmp_mp3,
-            "--write-subtitles", tmp_srt,
-        ], capture_output=True, text=True, timeout=120)
-        if result.returncode == 0 and Path(tmp_mp3).exists():
-            data = Path(tmp_mp3).read_bytes()
-            Path(tmp_mp3).unlink(missing_ok=True)
-
-            # 解析SRT字幕
-            srt_data = _parse_srt(tmp_srt) if Path(tmp_srt).exists() else []
-            Path(tmp_srt).unlink(missing_ok=True)
-
-            if return_subtitles and srt_data:
-                subtitles = srt_data
-
-            cache_path.write_bytes(data)
-            return cache_path if not return_subtitles else (cache_path, subtitles)
+        result = _edge_tts_segmented(text, edge_voice, return_subtitles=True)
+        if isinstance(result, tuple):
+            tmp_mp3, srt_data = result
+        else:
+            tmp_mp3, srt_data = result, []
+        data = Path(tmp_mp3).read_bytes()
         Path(tmp_mp3).unlink(missing_ok=True)
-        Path(tmp_srt).unlink(missing_ok=True)
-        print(f"Edge-TTS failed: {result.stderr[:200]}")
+        if return_subtitles and srt_data:
+            subtitles = srt_data
+        cache_path.write_bytes(data)
+        return cache_path if not return_subtitles else (cache_path, subtitles)
     except Exception as e:
         print(f"Edge-TTS error: {e}")
+
+    raise RuntimeError(f"TTS failed for text: {text[:50]}...")
+
+def _split_text_for_tts(text: str, max_chars: int = 80) -> list[str]:
+    """将长文本按标点拆成短句，提升Edge-TTS对齐精度"""
+    import re
+    if len(text) <= max_chars:
+        return [text]
+    # 按句末标点拆分
+    raw = re.split(r"(?<=[。！？\n])", text)
+    segments = []
+    buf = ""
+    for s in raw:
+        s = s.strip()
+        if not s:
+            continue
+        if len(buf) + len(s) <= max_chars:
+            buf += s
+        else:
+            if buf:
+                segments.append(buf)
+            buf = s
+    if buf:
+        segments.append(buf)
+    return segments if segments else [text]
+
+
+def _edge_tts_segmented(text: str, voice: str, return_subtitles: bool = False):
+    """分段调用Edge-TTS，拼接音频并合并SRT时间戳"""
+    segments = _split_text_for_tts(text)
+    if len(segments) == 1:
+        return _edge_tts_single(text, voice, return_subtitles)
+
+    audio_parts = []
+    all_subs = []
+    time_offset = 0.0
+
+    for seg in segments:
+        seg_audio, seg_subs = _edge_tts_single(seg, voice, return_subtitles=True)
+        audio_parts.append(seg_audio)
+
+        # 调整SRT时间戳（加上前面段落的累积时长）
+        for sub in seg_subs:
+            all_subs.append({
+                "start": sub["start"] + time_offset,
+                "end": sub["end"] + time_offset,
+                "text": sub["text"],
+            })
+
+        # 计算本段音频时长作为下一段的偏移
+        from app.utils.ffmpeg_utils import get_media_duration
+        time_offset += get_media_duration(seg_audio)
+
+    # 拼接音频
+    if len(audio_parts) == 1:
+        combined_audio = audio_parts[0]
+    else:
+        concat_list = tempfile.mktemp(suffix=".txt")
+        combined_mp3 = tempfile.mktemp(suffix=".mp3")
+        with open(concat_list, "w") as f:
+            for ap in audio_parts:
+                f.write(f"file '{ap}'\n")
+        subprocess.run([
+            "ffmpeg", "-y", "-f", "concat", "-safe", "0",
+            "-i", concat_list, "-c", "copy", combined_mp3,
+        ], capture_output=True, check=True, timeout=60)
+        combined_audio = combined_mp3
+        # 清理临时片段
+        for ap in audio_parts:
+            Path(ap).unlink(missing_ok=True)
+        Path(concat_list).unlink(missing_ok=True)
+
+    return (combined_audio, all_subs) if return_subtitles else combined_audio
+
+
+def _edge_tts_single(text: str, voice: str, return_subtitles: bool = False):
+    """单次Edge-TTS调用，返回(音频路径, 字幕列表)"""
+    tmp_mp3 = tempfile.mktemp(suffix=".mp3")
+    tmp_srt = tempfile.mktemp(suffix=".srt")
+    result = subprocess.run([
+        "edge-tts", "--voice", voice, "--text", text,
+        "--write-media", tmp_mp3,
+        "--write-subtitles", tmp_srt,
+    ], capture_output=True, text=True, timeout=120)
+
+    if result.returncode != 0 or not Path(tmp_mp3).exists():
+        Path(tmp_srt).unlink(missing_ok=True)
+        raise RuntimeError(f"Edge-TTS failed: {result.stderr[:200]}")
+
+    srt_data = _parse_srt(tmp_srt) if Path(tmp_srt).exists() else []
+    Path(tmp_srt).unlink(missing_ok=True)
+    return (tmp_mp3, srt_data) if return_subtitles else tmp_mp3
 
     raise RuntimeError(f"TTS failed for text: {text[:50]}...")
