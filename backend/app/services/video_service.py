@@ -287,6 +287,17 @@ def generate_video(
         if sub_list:
             sub_list[-1]["end"] = speech_duration
 
+        # faster-whisper 逐词对齐（提升卡拉OK字幕精准度）
+        if sub_list:
+            try:
+                report(91, "AI正在对齐字幕...")
+                word_timings = _whisper_align(speech_path, spoken_text)
+                if word_timings:
+                    sub_list = _merge_word_timestamps(sub_list, word_timings)
+                    report(91, f"字幕逐词对齐完成（{len(word_timings)}个词）")
+            except Exception as e:
+                print(f"[video_service] whisper对齐失败，用均匀分配兜底: {e}")
+
         if sub_list:
             # 尝试生成ASS卡拉OK字幕并烧录（效果好，性能佳）
             ass_ok = False
@@ -331,6 +342,93 @@ def generate_video(
 
     report(100, "视频生成完成")
     return final_output
+
+
+def _whisper_align(audio_path: Path, spoken_text: str) -> list[dict] | None:
+    """用 faster-whisper tiny 模型获取逐词时间戳。
+    返回 [{"word": "明朝", "start": 1.23, "end": 1.65}, ...]，失败返回 None。
+    """
+    try:
+        from faster_whisper import WhisperModel
+        import os
+        model = WhisperModel("tiny", device="cpu", compute_type="int8",
+                             download_root="/tmp/whisper")
+        segments, _ = model.transcribe(str(audio_path), language="zh",
+                                        word_timestamps=True,
+                                        beam_size=5,
+                                        vad_filter=True)
+        words = []
+        for seg in segments:
+            if seg.words:
+                for w in seg.words:
+                    words.append({
+                        "word": w.word.strip(),
+                        "start": w.start,
+                        "end": w.end,
+                    })
+        return words if words else None
+    except Exception as e:
+        print(f"[whisper_align] 对齐失败，回退均匀分配: {e}")
+        return None
+
+
+def _merge_word_timestamps(sub_list: list[dict], word_timings: list[dict]) -> list[dict]:
+    """将 whisper 的词级时间戳映射到每个字幕条目中。
+    每个条目增加 "words" 键，包含属于该句子的词及其时间。
+    """
+    if not word_timings:
+        return sub_list
+
+    # 构建纯文本→词索引的映射（去掉whisper可能加的标点和空格）
+    word_idx = 0
+    n_words = len(word_timings)
+    # 拼接所有词的文本用于模糊匹配
+    all_words_text = "".join(w["word"] for w in word_timings)
+
+    for sub in sub_list:
+        text = sub["text"].strip()
+        # 在词列表中找该句子的起始位置
+        sub_words = []
+        # 滑动窗口匹配
+        text_clean = text.replace("，", "").replace("。", "").replace("、", "").replace(" ", "")
+        best_start = 0
+        best_score = 0
+        for i in range(max(0, word_idx - 2), min(n_words, word_idx + len(text) + 5)):
+            # 尝试从位置i开始，累计匹配
+            matched = ""
+            j = i
+            while j < n_words and len(matched) < len(text_clean) * 2:
+                matched += word_timings[j]["word"]
+                j += 1
+            # 简单计分：text_clean 在 matched 中的匹配度
+            score = 0
+            ti = 0
+            for ch in text_clean:
+                while ti < len(matched) and matched[ti] != ch:
+                    ti += 1
+                if ti < len(matched):
+                    score += 1
+                    ti += 1
+            if score > best_score:
+                best_score = score
+                best_start = i
+
+        # 收集匹配的词
+        j = best_start
+        collected = ""
+        while j < n_words:
+            w = word_timings[j]
+            sub_words.append({"word": w["word"], "start": w["start"], "end": w["end"]})
+            collected += w["word"]
+            if len(collected) >= len(text_clean):
+                break
+            j += 1
+        word_idx = j + 1 if j < n_words else word_idx
+
+        if sub_words:
+            sub["words"] = sub_words
+
+    return sub_list
 
 
 def _build_karaoke_ass(subtitles: list[dict], width: int, height: int,
@@ -411,17 +509,46 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 
         # 每行逐字扫描时长，以及扫完后留0.3s静置
         hold_cs = 30
+        # 优先用 whisper 词级时间戳；否则均匀分配
+        word_timings = sub.get("words")
         prev_karaoke_cs = 0  # 前几行已用的卡拉OK时间（cs）
         for li, line in enumerate(raw_lines):
-            line_dur = dur * len(line) / chars_total if chars_total > 0 else dur / n_lines
-            per_char_cs = max(1, int(line_dur * 100 / len(line))) if line else 10
             parts = []
             if li > 0 and prev_karaoke_cs > 0:
-                # 下行延迟：等上行扫完再开始，用空格吸收延迟
                 parts.append(f"{{\\k{prev_karaoke_cs}}} ")
-            for ch in line:
-                parts.append(f"{{\\k{per_char_cs}}}{_escape_ass(ch)}")
-            prev_karaoke_cs += len(line) * per_char_cs
+
+            if word_timings:
+                # 逐词时间戳：每个字按其所在词的时长分配
+                wi = 0
+                nw = len(word_timings)
+                for ch in line:
+                    # 跳过标点
+                    if ch in "，。！？、；：""''（）…—":
+                        parts.append(f"{{\\k1}}{_escape_ass(ch)}")
+                        continue
+                    # 找到包含当前字的词
+                    found = False
+                    for _ in range(min(3, nw - wi)):
+                        if wi < nw and ch in word_timings[wi]["word"]:
+                            w = word_timings[wi]
+                            w_dur_cs = max(1, int((w["end"] - w["start"]) * 100 / max(len(w["word"]), 1)))
+                            parts.append(f"{{\\k{w_dur_cs}}}{_escape_ass(ch)}")
+                            found = True
+                            break
+                        wi += 1
+                    if not found:
+                        parts.append(f"{{\\k10}}{_escape_ass(ch)}")
+            else:
+                # 均匀分配（兜底）
+                line_dur = dur * len(line) / chars_total if chars_total > 0 else dur / n_lines
+                per_char_cs = max(1, int(line_dur * 100 / len(line))) if line else 10
+                for ch in line:
+                    parts.append(f"{{\\k{per_char_cs}}}{_escape_ass(ch)}")
+
+            prev_karaoke_cs += 0  # 词级模式下不需要延迟累计
+            if not word_timings:
+                prev_karaoke_cs += len(line) * per_char_cs
+
             events.append({
                 "start": start, "end": end + hold_cs / 100.0,
                 "style": "Upper" if li == 0 else "Lower",
