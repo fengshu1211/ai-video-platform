@@ -19,14 +19,14 @@ MINIMAX_UPLOAD_URL = "https://api.minimaxi.com/v1/files/upload"
 MINIMAX_CLONE_URL = "https://api.minimaxi.com/v1/voice_clone"
 
 VOICE_LIST = [
-    {"id": "zh-CN-XiaoxiaoNeural", "name": "晓晓", "gender": "female", "style": "活泼甜美的少女声"},
-    {"id": "zh-CN-XiaoyiNeural", "name": "晓伊", "gender": "female", "style": "温柔知性女声"},
-    {"id": "zh-CN-YunxiNeural", "name": "云希", "gender": "male", "style": "温暖磁性的男声"},
-    {"id": "zh-CN-YunjianNeural", "name": "云健", "gender": "male", "style": "沉稳有力的男声"},
-    {"id": "zh-CN-YunyangNeural", "name": "云扬", "gender": "male", "style": "新闻播报风格"},
-    {"id": "zh-CN-YunxiaNeural", "name": "云夏", "gender": "male", "style": "亲切自然的男声"},
-    {"id": "zh-CN-liaoning-XiaobeiNeural", "name": "晓北（东北话）", "gender": "female", "style": "东北方言女声"},
-    {"id": "zh-CN-shaanxi-XiaoniNeural", "name": "晓妮（陕西话）", "gender": "female", "style": "陕西方言女声"},
+    {"id": "longxiaoxia_v2", "name": "龙小夏", "gender": "female", "style": "活泼甜美的少女声"},
+    {"id": "longxiaochun_v2", "name": "龙小淳", "gender": "female", "style": "温柔知性女声"},
+    {"id": "longxiaobai_v2", "name": "龙小白", "gender": "male", "style": "清澈温暖的男声"},
+    {"id": "longxiaocheng_v2", "name": "龙小诚", "gender": "male", "style": "沉稳有力的男声"},
+    {"id": "longwan_v2", "name": "龙婉", "gender": "female", "style": "知性新闻播报"},
+    {"id": "longanran", "name": "龙安燃", "gender": "female", "style": "活泼激情女声"},
+    {"id": "sambert-zhimao-v1", "name": "知猫", "gender": "female", "style": "活泼俏皮女声"},
+    {"id": "sambert-zhichu-v1", "name": "知厨", "gender": "male", "style": "舌尖美食男声"},
 ]
 MINIMAX_VOICES = VOICE_LIST
 
@@ -279,22 +279,27 @@ def text_to_speech(text: str, voice: str = "alex",
             except Exception as e:
                 print(f"CosyVoice inline clone error: {e}")
 
-    # ── 预设音色 → Edge-TTS（短句拆分提升对齐精度）──
-    edge_voice = voice if voice.startswith("zh-CN") else "zh-CN-YunxiNeural"
+    # ── 预设音色 → DashScope CosyVoice V2（阿里云，国内稳定）──
     try:
-        result = _edge_tts_segmented(text, edge_voice, return_subtitles=True)
-        if isinstance(result, tuple):
-            tmp_mp3, srt_data = result
+        from dashscope.audio.tts_v2 import SpeechSynthesizer
+        ds_voice = voice if voice.startswith("long") or voice.startswith("sambert") else "longxiaochun_v2"
+        ds_model = "cosyvoice-v2" if ds_voice.startswith("long") else "sambert-zhimao-v1"
+        # Sambert用不同的API
+        if ds_model.startswith("sambert"):
+            from dashscope.audio.tts import SpeechSynthesizer as SambertSynth
+            result = SambertSynth.call(model=ds_voice, text=text, sample_rate=48000)
+            if result.get_audio_data():
+                cache_path.write_bytes(result.get_audio_data())
+                return cache_path if not return_subtitles else (cache_path, [])
         else:
-            tmp_mp3, srt_data = result, []
-        data = Path(tmp_mp3).read_bytes()
-        Path(tmp_mp3).unlink(missing_ok=True)
-        if return_subtitles and srt_data:
-            subtitles = srt_data
-        cache_path.write_bytes(data)
-        return cache_path if not return_subtitles else (cache_path, subtitles)
+            synthesizer = SpeechSynthesizer(model="cosyvoice-v2", voice=ds_voice)
+            audio_data = synthesizer.call(text)
+            if audio_data:
+                cache_path.write_bytes(audio_data)
+                return cache_path if not return_subtitles else (cache_path, [])
+        print(f"DashScope TTS returned empty for voice={ds_voice}")
     except Exception as e:
-        print(f"Edge-TTS error: {e}")
+        print(f"DashScope TTS error: {e}")
 
     raise RuntimeError(f"TTS failed for text: {text[:50]}...")
 

@@ -52,11 +52,11 @@ def generate_video(
             progress_callback(percent, msg)
 
     RESOLUTIONS = {
-        "9:16": (1080, 1920),
-        "16:9": (1920, 1080),
-        "1:1": (1080, 1080),
+        "9:16": (720, 1280),
+        "16:9": (1280, 720),
+        "1:1": (720, 720),
     }
-    width, height = RESOLUTIONS.get(aspect_ratio, (1080, 1920))
+    width, height = RESOLUTIONS.get(aspect_ratio, (720, 1280))
     VIDEO_SCALE = f"scale={width}:{height}:force_original_aspect_ratio=decrease,pad={width}:{height}:(ow-iw)/2:(oh-ih)/2"
     IMAGE_SCALE = f"scale={width}:{height}:force_original_aspect_ratio=increase,crop={width}:{height}"
 
@@ -198,8 +198,12 @@ def generate_video(
         "pan_up", "pan_down", "zoom_in_fast", "zoom_out_fast",
         "diagonal_lr", "diagonal_rl",
     ]
-    per_dur = speech_duration / max(len(valid_mats), 1)
-    for i, mat_path in enumerate(valid_mats):
+
+    # 最多8段素材（多了编码慢，边际效益低）
+    use_mats = valid_mats[:8]
+    seg_count = len(use_mats)
+    per_dur = speech_duration / max(seg_count, 1)
+    for i, mat_path in enumerate(use_mats):
         ext = mat_path.suffix.lower()
         if ext in (".jpg",".jpeg",".png",".gif",".bmp",".webp"):
             clip = OUTPUTS_DIR / f"clip_{i}_{mat_path.stem}.mp4"
@@ -212,10 +216,17 @@ def generate_video(
         elif ext in (".mp4",".mov",".avi",".webm",".mkv"):
             trimmed = OUTPUTS_DIR / f"trim_{i}_{mat_path.stem}.mp4"
             from subprocess import run
-            run(["ffmpeg","-y","-i",str(mat_path),"-t",str(per_dur),"-an",
-                "-vf",f"{VIDEO_SCALE},fps=25,settb=1/25",
-                "-c:v","libx264","-preset","veryfast","-pix_fmt","yuv420p",
-                "-r","25",str(trimmed)], check=True, timeout=60)
+            # 先尝试无损快切（不重新编码），失败则完整转码
+            try:
+                run(["ffmpeg","-y","-ss","0","-i",str(mat_path),
+                    "-t",str(per_dur),"-an","-c","copy",
+                    "-avoid_negative_ts","make_zero",str(trimmed)],
+                    check=True, timeout=15)
+            except Exception:
+                run(["ffmpeg","-y","-i",str(mat_path),"-t",str(per_dur),"-an",
+                    "-vf",f"{VIDEO_SCALE},fps=25,settb=1/25",
+                    "-c:v","libx264","-preset","superfast","-pix_fmt","yuv420p",
+                    "-r","25",str(trimmed)], check=True, timeout=60)
             material_clips.append(trimmed)
 
     if not material_clips:
@@ -224,15 +235,13 @@ def generate_video(
         run(["ffmpeg","-y","-f","lavfi","-i",f"color=c=0x1a1a2e:s={width}x{height}:d={speech_duration}","-c:v","libx264","-preset","veryfast","-pix_fmt","yuv420p",str(fallback)], check=True, timeout=60)
         material_clips.append(fallback)
 
+    # 硬切拼接（比xfade快5倍，2核服务器优先）
+    merged_video = OUTPUTS_DIR / f"merged_{speech_path.stem}.mp4"
     if len(material_clips) > 1:
-        merged_video = OUTPUTS_DIR / f"merged_{speech_path.stem}.mp4"
-        try:
-            concat_with_crossfade(material_clips, merged_video, fade_dur=1.5)
-        except Exception:
-            # 帧率不一致时回退硬切
-            concat_media(material_clips, merged_video)
+        concat_media(material_clips, merged_video)
     else:
-        merged_video = material_clips[0]
+        import shutil
+        shutil.copy2(str(material_clips[0]), str(merged_video))
 
     report(75, "正在合并音视频...")
     temp_output = OUTPUTS_DIR / f"temp_{speech_path.stem}.mp4"
@@ -274,69 +283,26 @@ def generate_video(
     # 7. 字幕 — 纯白字淡入淡出，简单可靠
     mode_suffix = f"_{lip_sync_mode}_{aspect_ratio.replace(':', 'x')}" if lip_sync_video else ""
     final_output = OUTPUTS_DIR / f"final_{speech_path.stem}{mode_suffix}.mp4"
-    if subtitle_enabled:
-        report(90, "正在生成字幕...")
-        # 优先用TTS返回的精确时间戳，空则估算兜底
-        tts_subtitles = mini_subtitles if (mini_subtitles and len(mini_subtitles) > 0) else []
-        if tts_subtitles:
-            sub_list = tts_subtitles
-            report(92, f"使用TTS精确字幕（{len(sub_list)}句）")
-        else:
-            sub_list = _split_text_to_subtitles(spoken_text, speech_duration)
-            report(92, f"使用估算字幕（{len(sub_list)}句）")
-        if sub_list:
-            sub_list[-1]["end"] = speech_duration
-
-        # Paraformer 逐字对齐（DashScope，精准）
-        if sub_list:
-            try:
-                report(91, "AI正在逐字对齐字幕...")
-                word_timings = _paraformer_align(speech_path)
-                if word_timings:
-                    sub_list = _merge_word_timestamps(sub_list, word_timings)
-                    report(91, f"字幕逐字对齐完成（{len(word_timings)}字）")
-            except Exception as e:
-                print(f"[video_service] 对齐失败，用均匀分配兜底: {e}", flush=True)
-
-        if sub_list:
-            # 尝试生成ASS卡拉OK字幕并烧录（效果好，性能佳）
-            ass_ok = False
-            try:
-                ass_path = _build_karaoke_ass(sub_list, width, height, speech_duration, spoken_text)
-                if ass_path and ass_path.exists():
-                    from app.utils.ffmpeg_utils import burn_subtitles
-                    report(93, "ASS字幕烧录中...")
-                    burn_subtitles(temp_output, ass_path, final_output, format="ass")
-                    ass_ok = True
-                    # 清理临时ASS
-                    ass_path.unlink(missing_ok=True)
-            except Exception as e:
-                print(f"[video_service] ASS字幕失败，回退drawtext: {e}")
-
-            if not ass_ok:
-                # drawtext兜底
-                report(93, "使用drawtext字幕兜底...")
-                vf = _build_drawtext_vf(sub_list, width, height, speech_duration)
-                try:
-                    subprocess.run(["ffmpeg","-y","-i",str(temp_output),"-vf",vf,"-c:a","copy","-preset","veryfast",str(final_output)], check=True, timeout=300)
-                    ass_ok = True
-                except subprocess.CalledProcessError as e:
-                    print(f"[video_service] drawtext也失败: {e}")
-                    shutil.move(str(temp_output), str(final_output))
-        else:
-            shutil.move(str(temp_output), str(final_output))
-    else:
-        shutil.move(str(temp_output), str(final_output))
+    # 字幕暂时关闭，直接输出
+    shutil.move(str(temp_output), str(final_output))
 
     # 8. 片头片尾淡入淡出
-    if speech_duration > 3:
-        faded = OUTPUTS_DIR / f"faded_{speech_path.stem}{mode_suffix}.mp4"
+    # 8. 美化：暗角+增艳+锐化+淡入淡出
+    if speech_duration > 1:
+        beautified = OUTPUTS_DIR / f"beauty_{speech_path.stem}{mode_suffix}.mp4"
         try:
+            vf = (
+                f"fade=in:0:25,"
+                f"fade=out:st={speech_duration-1:.2f}:d=1,"
+                f"vignette=PI/4,"
+                f"eq=saturation=1.15:brightness=0.02:contrast=1.05,"
+                f"unsharp=5:5:0.8:3:3:0.4"
+            )
             subprocess.run(["ffmpeg","-y","-i",str(final_output),
-                "-vf",f"fade=in:0:25,fade=out:st={speech_duration-1:.2f}:d=1",
-                "-c:a","copy","-preset","veryfast",str(faded)], check=True, timeout=120)
+                "-vf",vf,
+                "-c:a","copy","-preset","veryfast",str(beautified)], check=True, timeout=120)
             final_output.unlink()
-            shutil.move(str(faded), str(final_output))
+            shutil.move(str(beautified), str(final_output))
         except subprocess.CalledProcessError:
             pass
 
@@ -344,195 +310,115 @@ def generate_video(
     return final_output
 
 
-def _paraformer_align(audio_path: Path) -> list[dict] | None:
-    """用 DashScope Paraformer 语音识别获取逐字时间戳。
+def _whisper_align_v2(audio_path: Path) -> list[dict] | None:
+    """用本地 faster-whisper 获取逐词时间戳。不分文本长短，无网络超时。
     返回 [{"word": "明", "start": 1.23, "end": 1.45}, ...]，失败返回 None。
     """
     try:
-        import dashscope
-        from dashscope.audio.asr import Transcription
-        from urllib import request
-        import json
-        import time
-        import os
-
-        # 音频必须在 uploads 目录下才能通过静态文件访问
-        uploads_dir = audio_path.parent.parent if audio_path.parent.name != "uploads" else audio_path.parent
-        rel = str(audio_path.relative_to(uploads_dir)).replace("\\", "/")
-        # 用 localhost 避免公网延迟
-        audio_url = f"http://127.0.0.1:8000/uploads/{rel}"
-
-        print(f"[paraformer] 提交识别: {audio_url}", flush=True)
-        task = Transcription.async_call(
-            model="paraformer-v2",
-            file_urls=[audio_url],
-            timestamp_alignment_enabled=True,
+        from faster_whisper import WhisperModel
+        model = WhisperModel("tiny", device="cpu", compute_type="int8",
+                             download_root="/tmp/whisper")
+        segments, _ = model.transcribe(
+            str(audio_path), language="zh",
+            word_timestamps=True, beam_size=5,
+            vad_filter=True, vad_parameters=dict(min_silence_duration_ms=300),
         )
-        task_id = task.output.task_id
-        print(f"[paraformer] task_id={task_id}", flush=True)
-
-        # 轮询（最多60秒）
-        result = None
-        for i in range(30):
-            time.sleep(2)
-            result = Transcription.wait(task=task_id)
-            status = result.output.get("task_status") if result.output else ""
-            if status == "SUCCEEDED":
-                break
-            if status == "FAILED":
-                print(f"[paraformer] 识别失败: {result.output}", flush=True)
-                return None
-
-        if not result or not result.output:
-            return None
-
-        results = result.output.get("results", [])
-        if not results:
-            return None
-        transcription_url = results[0].get("transcription_url")
-        if not transcription_url:
-            return None
-
-        # 下载解析结果JSON
-        result_json = json.loads(request.urlopen(transcription_url).read().decode("utf8"))
-
         words = []
-        transcripts = result_json.get("transcripts", [])
-        for doc in transcripts:
-            for sent in doc.get("sentences", []):
-                text = sent.get("text", "")
-                begin = sent.get("begin_time", 0)  # ms
-                end = sent.get("end_time", 0)
-                # 该句的时长
-                sent_dur = max(end - begin, 1)
-                word_list = sent.get("words", [])
-                if word_list:
-                    for w in word_list:
+        for seg in segments:
+            if seg.words:
+                for w in seg.words:
+                    w_text = w.word.strip()
+                    if w_text:
                         words.append({
-                            "word": w["text"],
-                            "start": w["begin_time"] / 1000.0,
-                            "end": w["end_time"] / 1000.0,
+                            "word": w_text,
+                            "start": w.start,
+                            "end": w.end,
                         })
-                elif text:
-                    # 无逐字数据，整句均匀分
-                    chars = list(text.replace(" ", ""))
-                    per_char = sent_dur / max(len(chars), 1)
-                    for i, ch in enumerate(chars):
-                        words.append({
-                            "word": ch,
-                            "start": (begin + i * per_char) / 1000.0,
-                            "end": (begin + (i+1) * per_char) / 1000.0,
-                        })
-
-        print(f"[paraformer] 对齐完成: {len(words)}个字", flush=True)
+        print(f"[whisper] 对齐完成: {len(words)}字", flush=True)
         return words if words else None
     except Exception as e:
-        print(f"[paraformer_align] 对齐失败，回退: {e}", flush=True)
+        print(f"[whisper_align] 失败: {e}", flush=True)
         return None
 
 
 def _merge_word_timestamps(sub_list: list[dict], word_timings: list[dict]) -> list[dict]:
-    """将 whisper 的词级时间戳映射到每个字幕条目中。
-    每个条目增加 "words" 键，包含属于该句子的词及其时间。
-    """
+    """将词级时间戳按顺序分配给字幕句子。简单线性推进，不搞复杂匹配。"""
     if not word_timings:
         return sub_list
 
-    # 构建纯文本→词索引的映射（去掉whisper可能加的标点和空格）
-    word_idx = 0
-    n_words = len(word_timings)
-    # 拼接所有词的文本用于模糊匹配
-    all_words_text = "".join(w["word"] for w in word_timings)
-
+    wi = 0
+    nw = len(word_timings)
     for sub in sub_list:
-        text = sub["text"].strip()
-        # 在词列表中找该句子的起始位置
+        text_clean = sub["text"].strip().replace("，", "").replace("。", "").replace("、", "").replace(" ", "").replace("\"", "").replace("\"", "").replace("\n", "")
+        chars_needed = len(text_clean)
         sub_words = []
-        # 滑动窗口匹配
-        text_clean = text.replace("，", "").replace("。", "").replace("、", "").replace(" ", "")
-        best_start = 0
-        best_score = 0
-        for i in range(max(0, word_idx - 2), min(n_words, word_idx + len(text) + 5)):
-            # 尝试从位置i开始，累计匹配
-            matched = ""
-            j = i
-            while j < n_words and len(matched) < len(text_clean) * 2:
-                matched += word_timings[j]["word"]
-                j += 1
-            # 简单计分：text_clean 在 matched 中的匹配度
-            score = 0
-            ti = 0
-            for ch in text_clean:
-                while ti < len(matched) and matched[ti] != ch:
-                    ti += 1
-                if ti < len(matched):
-                    score += 1
-                    ti += 1
-            if score > best_score:
-                best_score = score
-                best_start = i
-
-        # 收集匹配的词
-        j = best_start
-        collected = ""
-        while j < n_words:
-            w = word_timings[j]
+        chars_collected = 0
+        start_wi = wi
+        while wi < nw and chars_collected < chars_needed:
+            w = word_timings[wi]
+            w_text = w["word"].replace(" ", "")
             sub_words.append({"word": w["word"], "start": w["start"], "end": w["end"]})
-            collected += w["word"]
-            if len(collected) >= len(text_clean):
-                break
-            j += 1
-        word_idx = j + 1 if j < n_words else word_idx
-
+            chars_collected += len(w_text)
+            wi += 1
+        # 如果最后一个词超出，回退
+        if chars_collected > chars_needed + 2 and len(sub_words) > 1:
+            sub_words = sub_words[:-1]
+            wi -= 1
         if sub_words:
             sub["words"] = sub_words
-
     return sub_list
 
 
 def _build_karaoke_ass(subtitles: list[dict], width: int, height: int,
-                       total_dur: float, spoken_text: str = "") -> Path | None:
-    """生成卡拉OK字幕ASS文件：逐字高亮，跟着口播节奏走。
-
-    优先用MiniMax的句子级时间戳，逐字均匀分配每个字的时间。
-    屏幕最多2-3行，当前行高亮显示（黄色），已读完变灰色。
-    返回 ASS 文件路径，失败返回 None。
-    """
+                       total_dur: float, spoken_text: str = "",
+                       subtitle_style: str = "golden_glow") -> Path | None:
+    """生成简洁卡拉OK字幕ASS文件。单一样式，居中偏下，从上往下排列。"""
     from app.config import OUTPUTS_DIR
 
     if not subtitles:
         return None
 
-    # 归一化时间戳
     norm_subs = _normalize_subtitles(subtitles)
     if not norm_subs:
         return None
 
-    # 如果MiniMax只返回一大段，按句子拆分后均匀分配时间
-    if len(norm_subs) == 1 and len(norm_subs[0]["text"]) > 30:
-        raw = [s.strip() for s in re.split(r"[。！？\n]", norm_subs[0]["text"]) if s.strip()]
-        if raw:
-            full_start = norm_subs[0]["start"]
-            full_end = norm_subs[0]["end"]
-            dur_per = (full_end - full_start) / len(raw)
-            norm_subs = [
-                {"start": full_start + i * dur_per, "end": full_start + (i+1) * dur_per, "text": s}
-                for i, s in enumerate(raw)
-            ]
+    # 合并过短字幕
+    merged = []
+    buf = ""
+    buf_start = 0
+    for s in norm_subs:
+        if len(buf) + len(s["text"]) < 30:
+            if not buf:
+                buf_start = s["start"]
+            buf += s["text"]
+        else:
+            if buf:
+                merged.append({"start": buf_start, "end": s["start"], "text": buf})
+            buf = ""
+            merged.append(s)
+    if buf:
+        merged.append({"start": buf_start, "end": norm_subs[-1]["end"], "text": buf})
+    if not merged:
+        merged = norm_subs
 
-    # 字幕布局：居中偏下，逐行从上往下排列
+    norm_subs = merged
+
+    # 布局参数（竖屏720x1280）
     is_vertical = height > width
     if is_vertical:
-        font_size = 48
-        max_chars_per_line = 12
-        max_lines = 2
-    else:
-        font_size = max(44, int(height * 0.038))
-        max_chars_per_line = max(14, int((width - 120) / (font_size * 1.1)))
+        font_size = 46
+        max_chars = 16
         max_lines = 3
-    margin_v = int(height * 0.15)
-    margin_h = 60
-    line_height = int(font_size * 1.35)
+    else:
+        font_size = max(42, int(height * 0.036))
+        max_chars = max(20, int(width / (font_size * 1.2)))
+        max_lines = 3
+    line_height = int(font_size * 1.4)
+    # 底部留白，2行字幕的底边距
+    bottom_margin = int(height * 0.12)
+    # 上行距底部 = bottom_margin + line_height, 下行距底部 = bottom_margin
+    upper_margin = bottom_margin + line_height
+    lower_margin = bottom_margin
 
     header = f"""[Script Info]
 ScriptType: v4.00+
@@ -542,94 +428,88 @@ WrapStyle: 2
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Upper,Noto Sans CJK SC,{font_size},&H0044EEFF,&H00FFFF00,&H00660000,&H88000000,-1,0,0,0,100,100,0,0,1,4,3,2,{margin_h},{margin_h},{margin_v+line_height},1
-Style: Lower,Noto Sans CJK SC,{font_size},&H0066AACC,&H0066AACC,&H00000000,&H44000000,-1,0,0,0,100,100,0,0,1,3,2,2,{margin_h},{margin_h},{margin_v},1
+Style: Line1,Noto Sans CJK SC,{font_size},&H00FFFFFF,&H00668888,&H00000000,&H66000000,-1,0,0,0,100,100,0,0,1,4,3,2,60,60,{upper_margin},1
+Style: Line2,Noto Sans CJK SC,{font_size},&H00FFFFFF,&H00668888,&H00000000,&H44000000,-1,0,0,0,100,100,0,0,1,3,2,2,60,60,{lower_margin},1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 """
 
-    # 逐句处理：每句按字数均匀分配时间，\|k 标签实现逐字扫描
     events = []
     for sub in norm_subs:
         text = sub["text"]
         start = sub["start"]
         end = sub["end"]
-        dur = max(end - start, 0.1)
-        chars = list(text)
+        dur = max(end - start, 0.3)
+        words = sub.get("words")  # Paraformer词级时间戳（可选）
 
-        # 按 max_chars_per_line 拆行，硬上限 max_lines 行
-        raw_lines = _wrap_text(text, max_chars_per_line)
-        if len(raw_lines) > max_lines:
-            raw_lines = raw_lines[:max_lines]
-            raw_lines[-1] = raw_lines[-1][:max_chars_per_line - 1] + "…"
-        n_lines = len(raw_lines)
-        chars_total = sum(len(L) for L in raw_lines)
+        lines = _wrap_text(text, max_chars)
+        if len(lines) > max_lines:
+            lines = lines[:max_lines]
+            lines[-1] = lines[-1][:max_chars-1] + "..."
 
-        # 每行逐字扫描时长，以及扫完后留0.3s静置
-        hold_cs = 30
-        word_timings = sub.get("words")
-        # 词级时间戳：归一化到句子SRT时长内
-        if word_timings:
-            w_total = sum(max(w["end"] - w["start"], 0.01) for w in word_timings)
-            scale = dur / max(w_total, 0.01)  # 缩放因子，保证不超出句子时长
-        else:
-            scale = 1.0
-        prev_karaoke_cs = 0
-        for li, line in enumerate(raw_lines):
+        # 逐字计时：仅第一行逐字高亮，其他行静态显示
+        for li, line in enumerate(lines):
             parts = []
-            if li > 0 and prev_karaoke_cs > 0:
-                parts.append(f"{{\\k{prev_karaoke_cs}}} ")
-
-            if word_timings:
-                wi = 0
-                nw = len(word_timings)
-                for ch in line:
-                    if ch in "，。！？、；：""''（）…—":
-                        parts.append(f"{{\\k1}}{_escape_ass(ch)}")
-                        continue
-                    found = False
-                    for _ in range(min(3, nw - wi)):
-                        if wi < nw and ch in word_timings[wi]["word"]:
-                            w = word_timings[wi]
-                            raw_dur = max(w["end"] - w["start"], 0.01)
-                            w_dur_cs = max(1, int(raw_dur * scale * 100 / max(len(w["word"]), 1)))
-                            parts.append(f"{{\\k{w_dur_cs}}}{_escape_ass(ch)}")
-                            found = True
-                            break
-                        wi += 1
-                    if not found:
-                        parts.append(f"{{\\k10}}{_escape_ass(ch)}")
+            if li == 0:
+                # 第一行：\k 逐字高亮
+                if words:
+                    wi = 0
+                    nw = len(words)
+                    for ch in line:
+                        if ch in "，。！？、；：""''（）…—":
+                            parts.append(f"{{\\k1}}{_escape_ass(ch)}")
+                            continue
+                        found = False
+                        for _ in range(min(3, max(1, nw - wi))):
+                            if wi < nw and ch in words[wi]["word"]:
+                                w = words[wi]
+                                w_dur = max(w["end"] - w["start"], 0.02)
+                                w_cs = max(1, int(w_dur * 100 / max(len(w["word"]), 1)))
+                                parts.append(f"{{\\k{w_cs}}}{_escape_ass(ch)}")
+                                found = True
+                                break
+                            wi += 1
+                        if not found:
+                            parts.append(f"{{\\k8}}{_escape_ass(ch)}")
+                else:
+                    per_char_cs = max(2, int(dur * 100 / max(len(line), 1)))
+                    for ch in line:
+                        parts.append(f"{{\\k{per_char_cs}}}{_escape_ass(ch)}")
             else:
-                line_dur = dur * len(line) / chars_total if chars_total > 0 else dur / n_lines
-                per_char_cs = max(1, int(line_dur * 100 / len(line))) if line else 10
-                for ch in line:
-                    parts.append(f"{{\\k{per_char_cs}}}{_escape_ass(ch)}")
-
-            if not word_timings:
-                prev_karaoke_cs += len(line) * per_char_cs
+                # 第二行起：静态显示（无 \k）
+                parts = [_escape_ass(ch) for ch in line]
 
             events.append({
-                "start": start, "end": end + hold_cs / 100.0,
-                "style": "Upper" if li == 0 else "Lower",
+                "start": start,
+                "end": end + 0.3,
+                "style": "Line1" if li == 0 else "Line2",
                 "text": "".join(parts),
             })
 
-    # 末尾强制补齐：最后一条字幕延伸到视频结尾，不留空白
     if events:
         events[-1]["end"] = max(events[-1]["end"], total_dur)
 
-    # 组装ASS内容
+    import uuid
     ass_lines = [header]
     for ev in events:
-        t = f"Dialogue: 0,{_ass_time(ev['start'])},{_ass_time(ev['end'])},{ev['style']},,0,0,0,,{ev['text']}"
-        ass_lines.append(t)
-
-    # 写入临时ASS文件
-    import uuid
+        ass_lines.append(
+            f"Dialogue: 0,{_ass_time(ev['start'])},{_ass_time(ev['end'])}"
+            f",{ev['style']},,0,0,0,,{ev['text']}"
+        )
     ass_path = OUTPUTS_DIR / f"_karaoke_{uuid.uuid4().hex[:8]}.ass"
     ass_path.write_text("\n".join(ass_lines), encoding="utf-8")
     return ass_path
+
+
+def _ass_highlight_tag(style: str) -> str:
+    """返回当前正在念的字的ASS特效标签"""
+    if style == "gradient_bar":
+        return "{\\bord5\\3c&HAA000000&\\c&H00FFFFFF&}"
+    elif style == "pop_in":
+        return "{\\fscx115\\fscy115\\c&H0044FF66&}"
+    else:  # golden_glow / fade / default
+        return "{\\blur2\\bord3\\c&H0044EEFF&}"
 
 
 def _ass_time(seconds: float) -> str:
@@ -676,9 +556,15 @@ def _split_text_to_subtitles(text: str, total_duration: float) -> list[dict]:
     if buf.strip():
         merged.append(buf.rstrip("。"))
 
-    dur_per = total_duration / len(merged)
-    return [{"start": i * dur_per, "end": min((i+1) * dur_per, total_duration), "text": s}
-            for i, s in enumerate(merged)]
+    # 按字数比例分配时间（中文约4字/秒），比平均分更准
+    total_chars = sum(len(s) for s in merged)
+    results = []
+    t = 0.0
+    for s in merged:
+        d = total_duration * len(s) / max(total_chars, 1)
+        results.append({"start": t, "end": t + d, "text": s})
+        t += d
+    return results
 
 
 def _escape_drawtext(s: str) -> str:
