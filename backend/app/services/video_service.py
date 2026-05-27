@@ -287,16 +287,16 @@ def generate_video(
         if sub_list:
             sub_list[-1]["end"] = speech_duration
 
-        # faster-whisper 逐词对齐（提升卡拉OK字幕精准度）
+        # Paraformer 逐字对齐（DashScope，精准）
         if sub_list:
             try:
-                report(91, "AI正在对齐字幕...")
-                word_timings = _whisper_align(speech_path, spoken_text)
+                report(91, "AI正在逐字对齐字幕...")
+                word_timings = _paraformer_align(speech_path)
                 if word_timings:
                     sub_list = _merge_word_timestamps(sub_list, word_timings)
-                    report(91, f"字幕逐词对齐完成（{len(word_timings)}个词）")
+                    report(91, f"字幕逐字对齐完成（{len(word_timings)}字）")
             except Exception as e:
-                print(f"[video_service] whisper对齐失败，用均匀分配兜底: {e}")
+                print(f"[video_service] 对齐失败，用均匀分配兜底: {e}", flush=True)
 
         if sub_list:
             # 尝试生成ASS卡拉OK字幕并烧录（效果好，性能佳）
@@ -344,31 +344,90 @@ def generate_video(
     return final_output
 
 
-def _whisper_align(audio_path: Path, spoken_text: str) -> list[dict] | None:
-    """用 faster-whisper tiny 模型获取逐词时间戳。
-    返回 [{"word": "明朝", "start": 1.23, "end": 1.65}, ...]，失败返回 None。
+def _paraformer_align(audio_path: Path) -> list[dict] | None:
+    """用 DashScope Paraformer 语音识别获取逐字时间戳。
+    返回 [{"word": "明", "start": 1.23, "end": 1.45}, ...]，失败返回 None。
     """
     try:
-        from faster_whisper import WhisperModel
+        import dashscope
+        from dashscope.audio.asr import Transcription
+        from urllib import request
+        import json
+        import time
         import os
-        model = WhisperModel("tiny", device="cpu", compute_type="int8",
-                             download_root="/tmp/whisper")
-        segments, _ = model.transcribe(str(audio_path), language="zh",
-                                        word_timestamps=True,
-                                        beam_size=5,
-                                        vad_filter=True)
+
+        # 音频必须在 uploads 目录下才能通过静态文件访问
+        uploads_dir = audio_path.parent.parent if audio_path.parent.name != "uploads" else audio_path.parent
+        rel = str(audio_path.relative_to(uploads_dir)).replace("\\", "/")
+        # 用 localhost 避免公网延迟
+        audio_url = f"http://127.0.0.1:8000/uploads/{rel}"
+
+        print(f"[paraformer] 提交识别: {audio_url}", flush=True)
+        task = Transcription.async_call(
+            model="paraformer-v2",
+            file_urls=[audio_url],
+            timestamp_alignment_enabled=True,
+        )
+        task_id = task.output.task_id
+        print(f"[paraformer] task_id={task_id}", flush=True)
+
+        # 轮询（最多60秒）
+        result = None
+        for i in range(30):
+            time.sleep(2)
+            result = Transcription.wait(task=task_id)
+            status = result.output.get("task_status") if result.output else ""
+            if status == "SUCCEEDED":
+                break
+            if status == "FAILED":
+                print(f"[paraformer] 识别失败: {result.output}", flush=True)
+                return None
+
+        if not result or not result.output:
+            return None
+
+        results = result.output.get("results", [])
+        if not results:
+            return None
+        transcription_url = results[0].get("transcription_url")
+        if not transcription_url:
+            return None
+
+        # 下载解析结果JSON
+        result_json = json.loads(request.urlopen(transcription_url).read().decode("utf8"))
+
         words = []
-        for seg in segments:
-            if seg.words:
-                for w in seg.words:
-                    words.append({
-                        "word": w.word.strip(),
-                        "start": w.start,
-                        "end": w.end,
-                    })
+        transcripts = result_json.get("transcripts", [])
+        for doc in transcripts:
+            for sent in doc.get("sentences", []):
+                text = sent.get("text", "")
+                begin = sent.get("begin_time", 0)  # ms
+                end = sent.get("end_time", 0)
+                # 该句的时长
+                sent_dur = max(end - begin, 1)
+                word_list = sent.get("words", [])
+                if word_list:
+                    for w in word_list:
+                        words.append({
+                            "word": w["text"],
+                            "start": w["begin_time"] / 1000.0,
+                            "end": w["end_time"] / 1000.0,
+                        })
+                elif text:
+                    # 无逐字数据，整句均匀分
+                    chars = list(text.replace(" ", ""))
+                    per_char = sent_dur / max(len(chars), 1)
+                    for i, ch in enumerate(chars):
+                        words.append({
+                            "word": ch,
+                            "start": (begin + i * per_char) / 1000.0,
+                            "end": (begin + (i+1) * per_char) / 1000.0,
+                        })
+
+        print(f"[paraformer] 对齐完成: {len(words)}个字", flush=True)
         return words if words else None
     except Exception as e:
-        print(f"[whisper_align] 对齐失败，回退均匀分配: {e}")
+        print(f"[paraformer_align] 对齐失败，回退: {e}", flush=True)
         return None
 
 
@@ -461,19 +520,19 @@ def _build_karaoke_ass(subtitles: list[dict], width: int, height: int,
                 for i, s in enumerate(raw)
             ]
 
-    # 与drawtext完全一致的保守参数，确保不出屏
+    # 字幕布局：居中偏下，逐行从上往下排列
     is_vertical = height > width
     if is_vertical:
-        font_size = 38
+        font_size = 48
         max_chars_per_line = 12
         max_lines = 2
     else:
-        font_size = max(36, int(height * 0.028))
+        font_size = max(44, int(height * 0.038))
         max_chars_per_line = max(14, int((width - 120) / (font_size * 1.1)))
         max_lines = 3
-    margin_v = int(height * 0.08)
+    margin_v = int(height * 0.15)
     margin_h = 60
-    line_height = int(font_size * 1.5)
+    line_height = int(font_size * 1.35)
 
     header = f"""[Script Info]
 ScriptType: v4.00+
@@ -483,8 +542,8 @@ WrapStyle: 2
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Upper,Noto Sans CJK SC,{font_size},&H0000FFFF,&H00FFFF00,&H00000000,&H80000000,0,0,0,0,100,100,0,0,1,3,2,2,{margin_h},{margin_h},{margin_v},1
-Style: Lower,Noto Sans CJK SC,{font_size},&H0000FFFF,&H00FFFF00,&H00000000,&H80000000,0,0,0,0,100,100,0,0,1,3,2,2,{margin_h},{margin_h},{margin_v+line_height},1
+Style: Upper,Noto Sans CJK SC,{font_size},&H0044EEFF,&H00FFFF00,&H00660000,&H88000000,-1,0,0,0,100,100,0,0,1,4,3,2,{margin_h},{margin_h},{margin_v+line_height},1
+Style: Lower,Noto Sans CJK SC,{font_size},&H0066AACC,&H0066AACC,&H00000000,&H44000000,-1,0,0,0,100,100,0,0,1,3,2,2,{margin_h},{margin_h},{margin_v},1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
@@ -509,29 +568,32 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 
         # 每行逐字扫描时长，以及扫完后留0.3s静置
         hold_cs = 30
-        # 优先用 whisper 词级时间戳；否则均匀分配
         word_timings = sub.get("words")
-        prev_karaoke_cs = 0  # 前几行已用的卡拉OK时间（cs）
+        # 词级时间戳：归一化到句子SRT时长内
+        if word_timings:
+            w_total = sum(max(w["end"] - w["start"], 0.01) for w in word_timings)
+            scale = dur / max(w_total, 0.01)  # 缩放因子，保证不超出句子时长
+        else:
+            scale = 1.0
+        prev_karaoke_cs = 0
         for li, line in enumerate(raw_lines):
             parts = []
             if li > 0 and prev_karaoke_cs > 0:
                 parts.append(f"{{\\k{prev_karaoke_cs}}} ")
 
             if word_timings:
-                # 逐词时间戳：每个字按其所在词的时长分配
                 wi = 0
                 nw = len(word_timings)
                 for ch in line:
-                    # 跳过标点
                     if ch in "，。！？、；：""''（）…—":
                         parts.append(f"{{\\k1}}{_escape_ass(ch)}")
                         continue
-                    # 找到包含当前字的词
                     found = False
                     for _ in range(min(3, nw - wi)):
                         if wi < nw and ch in word_timings[wi]["word"]:
                             w = word_timings[wi]
-                            w_dur_cs = max(1, int((w["end"] - w["start"]) * 100 / max(len(w["word"]), 1)))
+                            raw_dur = max(w["end"] - w["start"], 0.01)
+                            w_dur_cs = max(1, int(raw_dur * scale * 100 / max(len(w["word"]), 1)))
                             parts.append(f"{{\\k{w_dur_cs}}}{_escape_ass(ch)}")
                             found = True
                             break
@@ -539,13 +601,11 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                     if not found:
                         parts.append(f"{{\\k10}}{_escape_ass(ch)}")
             else:
-                # 均匀分配（兜底）
                 line_dur = dur * len(line) / chars_total if chars_total > 0 else dur / n_lines
                 per_char_cs = max(1, int(line_dur * 100 / len(line))) if line else 10
                 for ch in line:
                     parts.append(f"{{\\k{per_char_cs}}}{_escape_ass(ch)}")
 
-            prev_karaoke_cs += 0  # 词级模式下不需要延迟累计
             if not word_timings:
                 prev_karaoke_cs += len(line) * per_char_cs
 
