@@ -41,8 +41,8 @@ def generate_image(prompt: str, aspect_ratio: str = "9:16") -> Path | None:
             resp.raise_for_status()
             cache_path.write_bytes(resp.content)
             return cache_path
-    except Exception:
-        pass
+    except Exception as e:
+        print(f"[image_service] 通义万相生成失败 [{prompt[:40]}...]: {e}")
     return None
 
 

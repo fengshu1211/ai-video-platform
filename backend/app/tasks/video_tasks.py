@@ -102,92 +102,83 @@ def _generate_video_impl(project_id: int, _celery_id: str = "", _db=None):
 
         # ─── 2. 获取素材：AI生图优先 → Pexels搜图备用 → 纯色兜底 ───
         material_paths = []
-        material_paths_json = project.material_paths_json or "[]"
+
+        # 生成时始终重新获取素材（旧路径可能已失效）
+        # 准备场景描述（供AI生图用）
+        scene_descriptions = []
+        if segments:
+            for seg in segments:
+                desc = seg.get("visual_desc", "") or seg.get("description", "") or seg.get("scene_cn", "") or ", ".join(seg.get("keywords_cn", [])[:3])
+                if desc:
+                    scene_descriptions.append(desc)
+        if not scene_descriptions and all_keywords:
+            scene_descriptions = [", ".join(all_keywords[:3])]
+
+        # ── 方案A：通义万相AI生图（主方案，理解中文历史场景）──
+        ai_images = []
+        prompts = (scene_descriptions[:5] if scene_descriptions else [script_text[:200]])
+        report(18, "AI正在生成场景图...")
         try:
-            existing_materials = json.loads(material_paths_json)
-        except Exception:
-            existing_materials = []
+            from app.services.image_service import generate_scene_images
+            for prompt in prompts:
+                try:
+                    imgs = generate_scene_images(prompt, count=1)
+                    for img in imgs:
+                        rel = str(img.relative_to(img.parent.parent))
+                        material_paths.append(rel)
+                        ai_images.append(rel)
+                except Exception as e:
+                    print(f"[video_tasks] AI生图失败[{prompt[:30]}...]: {e}")
+            if ai_images:
+                report(25, f"AI生成了 {len(ai_images)} 张场景图")
+        except Exception as e:
+            print(f"[video_tasks] 通义万相不可用: {e}")
 
-        if existing_materials:
-            material_paths = existing_materials
-            report(30, f"使用已有 {len(material_paths)} 个素材")
-        else:
-            # 准备场景描述（供AI生图用）
-            scene_descriptions = []
-            if segments:
-                for seg in segments:
-                    desc = seg.get("description", "") or seg.get("scene_cn", "") or ", ".join(seg.get("keywords_cn", [])[:3])
-                    if desc:
-                        scene_descriptions.append(desc)
-            if not scene_descriptions and all_keywords:
-                scene_descriptions = [", ".join(all_keywords[:3])]
+        # ── 方案B：Pexels/Pixabay搜图补充 ──
+        if len(material_paths) < 5:
+            report(30, f"搜图补充中（{len(all_keywords)}个关键词）...")
+            from app.services.material_service import search_images, download_image
+            for kw in all_keywords[:6]:
+                try:
+                    imgs = search_images(kw, per_page=2)
+                    if imgs:
+                        for img in imgs[:2]:
+                            try:
+                                path = download_image(img["download_url"], img["id"])
+                                if path and path.stat().st_size > 500:
+                                    material_paths.append(str(path.relative_to(path.parent.parent)))
+                            except Exception as e:
+                                print(f"[video_tasks] 下载图片失败 {img.get('id')}: {e}")
+                    else:
+                        print(f"[video_tasks] Pexels对关键词'{kw}'无结果")
+                except Exception as e:
+                    print(f"[video_tasks] 搜索关键词'{kw}'失败: {e}")
+                if len(material_paths) >= 8:
+                    break
 
-            # ── 方案A：通义万相AI生图（主方案，理解中文历史场景）──
-            ai_images = []
-            report(18, "AI正在生成场景图...")
+            # 搜视频补充
+            if len(material_paths) < 4:
+                report(35, "视频搜索补充...")
+                _search_and_download(all_keywords, material_paths)
+
+        # ── 方案C：AI一段段再补生图（针对历史类文案搜不到图的情况）──
+        if len(material_paths) < 2:
+            report(40, "素材不足，AI扩增生成...")
             try:
                 from app.services.image_service import generate_scene_images
-                # 用场景描述或脚本摘要生图
-                prompts = scene_descriptions[:5] if scene_descriptions else [script_text[:200]]
-                for prompt in prompts:
+                for desc in (scene_descriptions or [script_text[:200]]):
                     try:
-                        imgs = generate_scene_images(prompt, count=1)
+                        imgs = generate_scene_images(desc, count=2)
                         for img in imgs:
-                            rel = str(img.relative_to(img.parent.parent))
-                            material_paths.append(rel)
-                            ai_images.append(rel)
-                    except Exception as e:
-                        print(f"[video_tasks] AI生图失败[{prompt[:30]}...]: {e}")
-                if ai_images:
-                    report(25, f"AI生成了 {len(ai_images)} 张场景图")
-            except Exception as e:
-                print(f"[video_tasks] 通义万相不可用: {e}")
-
-            # ── 方案B：Pexels/Pixabay搜图补充 ──
-            if len(material_paths) < 5:
-                report(30, f"搜图补充中（{len(all_keywords)}个关键词）...")
-                from app.services.material_service import search_images, download_image
-                for kw in all_keywords[:6]:
-                    try:
-                        imgs = search_images(kw, per_page=2)
-                        if imgs:
-                            for img in imgs[:2]:
-                                try:
-                                    path = download_image(img["download_url"], img["id"])
-                                    if path and path.stat().st_size > 500:
-                                        material_paths.append(str(path.relative_to(path.parent.parent)))
-                                except Exception as e:
-                                    print(f"[video_tasks] 下载图片失败 {img.get('id')}: {e}")
-                        else:
-                            print(f"[video_tasks] Pexels对关键词'{kw}'无结果")
-                    except Exception as e:
-                        print(f"[video_tasks] 搜索关键词'{kw}'失败: {e}")
-                    if len(material_paths) >= 8:
+                            material_paths.append(str(img.relative_to(img.parent.parent)))
+                    except Exception:
+                        pass
+                    if len(material_paths) >= 4:
                         break
+            except Exception as e:
+                print(f"[video_tasks] 扩增生成失败: {e}")
 
-                # 搜视频补充
-                if len(material_paths) < 4:
-                    report(35, "视频搜索补充...")
-                    _search_and_download(all_keywords, material_paths)
-
-            # ── 方案C：AI一段段再补生图（针对历史类文案搜不到图的情况）──
-            if len(material_paths) < 2:
-                report(40, "素材不足，AI扩增生成...")
-                try:
-                    from app.services.image_service import generate_scene_images
-                    for desc in (scene_descriptions or [script_text[:200]]):
-                        try:
-                            imgs = generate_scene_images(desc, count=2)
-                            for img in imgs:
-                                material_paths.append(str(img.relative_to(img.parent.parent)))
-                        except Exception:
-                            pass
-                        if len(material_paths) >= 4:
-                            break
-                except Exception as e:
-                    print(f"[video_tasks] 扩增生成失败: {e}")
-
-            report(45, f"共准备 {len(material_paths)} 个素材")
+        report(45, f"共准备 {len(material_paths)} 个素材")
 
         # ─── 3. 自动匹配BGM ───
         bgm_path = project.bgm_path
@@ -203,11 +194,14 @@ def _generate_video_impl(project_id: int, _celery_id: str = "", _db=None):
         lip_sync_video = None
         face_video_path = None
         if project.lip_sync_enabled:
-            # 找上传的人脸素材（视频或照片）
+            # 找上传的人脸素材（跳过AI生成的ai_*.png场景图）
             face_exts = ('.mp4', '.mov', '.avi', '.webm')
             if project.lip_sync_mode in ('digital_human', 'virtual_host'):
                 face_exts = ('.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.mp4', '.mov', '.avi', '.webm')
-            for mat in material_paths:
+            for mat in list(material_paths):
+                # 跳过AI生成的场景图
+                if "ai_" in mat and not project.lip_sync_mode in ('digital_human',):
+                    continue
                 if mat.lower().endswith(face_exts):
                     from pathlib import Path
                     fp = Path(mat)

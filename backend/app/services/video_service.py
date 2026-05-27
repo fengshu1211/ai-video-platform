@@ -276,7 +276,7 @@ def generate_video(
     final_output = OUTPUTS_DIR / f"final_{speech_path.stem}{mode_suffix}.mp4"
     if subtitle_enabled:
         report(90, "正在生成字幕...")
-        # 优先用TTS返回的精确时间戳（Edge-TTS自带文本对齐），空则估算兜底
+        # 优先用TTS返回的精确时间戳，空则估算兜底
         tts_subtitles = mini_subtitles if (mini_subtitles and len(mini_subtitles) > 0) else []
         if tts_subtitles:
             sub_list = tts_subtitles
@@ -284,15 +284,34 @@ def generate_video(
         else:
             sub_list = _split_text_to_subtitles(spoken_text, speech_duration)
             report(92, f"使用估算字幕（{len(sub_list)}句）")
-        # 强制最后一条延伸到结尾
         if sub_list:
             sub_list[-1]["end"] = speech_duration
+
         if sub_list:
-            vf = _build_drawtext_vf(sub_list, width, height, speech_duration)
+            # 尝试生成ASS卡拉OK字幕并烧录（效果好，性能佳）
+            ass_ok = False
             try:
-                subprocess.run(["ffmpeg","-y","-i",str(temp_output),"-vf",vf,"-c:a","copy","-preset","veryfast",str(final_output)], check=True, timeout=300)
-            except subprocess.CalledProcessError:
-                shutil.move(str(temp_output), str(final_output))
+                ass_path = _build_karaoke_ass(sub_list, width, height, speech_duration, spoken_text)
+                if ass_path and ass_path.exists():
+                    from app.utils.ffmpeg_utils import burn_subtitles
+                    report(93, "ASS字幕烧录中...")
+                    burn_subtitles(temp_output, ass_path, final_output, format="ass")
+                    ass_ok = True
+                    # 清理临时ASS
+                    ass_path.unlink(missing_ok=True)
+            except Exception as e:
+                print(f"[video_service] ASS字幕失败，回退drawtext: {e}")
+
+            if not ass_ok:
+                # drawtext兜底
+                report(93, "使用drawtext字幕兜底...")
+                vf = _build_drawtext_vf(sub_list, width, height, speech_duration)
+                try:
+                    subprocess.run(["ffmpeg","-y","-i",str(temp_output),"-vf",vf,"-c:a","copy","-preset","veryfast",str(final_output)], check=True, timeout=300)
+                    ass_ok = True
+                except subprocess.CalledProcessError as e:
+                    print(f"[video_service] drawtext也失败: {e}")
+                    shutil.move(str(temp_output), str(final_output))
         else:
             shutil.move(str(temp_output), str(final_output))
     else:
@@ -366,8 +385,8 @@ WrapStyle: 2
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Upper,Microsoft YaHei,{font_size},&H0000FFFF,&H00FFFF00,&H00000000,&H80000000,0,0,0,0,100,100,0,0,1,3,2,2,{margin_h},{margin_h},{margin_v},1
-Style: Lower,Microsoft YaHei,{font_size},&H0000FFFF,&H00FFFF00,&H00000000,&H80000000,0,0,0,0,100,100,0,0,1,3,2,2,{margin_h},{margin_h},{margin_v+line_height},1
+Style: Upper,Noto Sans CJK SC,{font_size},&H0000FFFF,&H00FFFF00,&H00000000,&H80000000,0,0,0,0,100,100,0,0,1,3,2,2,{margin_h},{margin_h},{margin_v},1
+Style: Lower,Noto Sans CJK SC,{font_size},&H0000FFFF,&H00FFFF00,&H00000000,&H80000000,0,0,0,0,100,100,0,0,1,3,2,2,{margin_h},{margin_h},{margin_v+line_height},1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
@@ -476,7 +495,7 @@ def _split_text_to_subtitles(text: str, total_duration: float) -> list[dict]:
 
 
 def _escape_drawtext(s: str) -> str:
-    return s.replace("\\", "\\\\").replace("'", "\\'").replace(":", "\\:")
+    return s.replace("\\", "\\\\").replace("'", "\\'").replace(":", "\\:").replace("{", "\\{").replace("}", "\\}").replace("%", "\\%")
 
 
 def _wrap_text(text: str, max_chars: int) -> list[str]:
