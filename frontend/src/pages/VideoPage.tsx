@@ -5,7 +5,7 @@ import {
   VideoCameraOutlined, PlusOutlined, PlayCircleOutlined, DeleteOutlined,
   ThunderboltOutlined, InboxOutlined, HeartOutlined, HeartFilled,
 } from '@ant-design/icons'
-import { videoApi, contentApi, voiceApi, uploadApi } from '../services/api'
+import { videoApi, contentApi, voiceApi, uploadApi, taskApi } from '../services/api'
 import type { VideoProject } from '../types/video'
 import type { RewrittenScript } from '../types/content'
 import type { VoiceProfile } from '../types/voice'
@@ -25,6 +25,7 @@ export default function VideoPage() {
   const [selectedLib, setSelectedLib] = useState<string[]>([])
   const [form] = Form.useForm()
   const [wizardStep, setWizardStep] = useState(0)
+  const [generatingTasks, setGeneratingTasks] = useState<Record<number, { taskId: number; progress: number; message: string }>>({})
 
   const MaterialUploader = ({ onUpload, materials, acceptVideo }: { onUpload: any, materials: any, acceptVideo?: boolean }) => (
     <Upload.Dragger multiple
@@ -136,12 +137,49 @@ export default function VideoPage() {
         message.warning(res.message)
         return
       }
-      message.success('视频生成任务已提交，正在自动搜图+语音合成+配字幕')
+      const taskId = res.data?.task_id
+      if (taskId) {
+        setGeneratingTasks((prev) => ({ ...prev, [id]: { taskId, progress: 0, message: '排队中...' } }))
+      }
+      message.success('任务已提交，后台生成中')
       loadData()
     } catch (e: any) {
       message.error('提交失败：' + (e?.message || '未知错误'))
     }
   }
+
+  // 轮询正在生成的任务进度
+  useEffect(() => {
+    const taskEntries = Object.entries(generatingTasks)
+    if (taskEntries.length === 0) return
+    const timer = setInterval(async () => {
+      let changed = false
+      const updated = { ...generatingTasks }
+      for (const [pid, task] of taskEntries) {
+        try {
+          const t: any = await taskApi.detail(task.taskId)
+          if (t.status === 'completed') {
+            delete updated[Number(pid)]
+            changed = true
+            message.success(`项目 #${pid} 视频生成完成`)
+            loadData()
+          } else if (t.status === 'failed') {
+            delete updated[Number(pid)]
+            changed = true
+            message.error(`项目 #${pid} 生成失败：${t.progress_message || '未知错误'}`)
+            loadData()
+          } else {
+            if (t.progress !== task.progress || t.progress_message !== task.message) {
+              updated[Number(pid)] = { taskId: task.taskId, progress: t.progress || 0, message: t.progress_message || '' }
+              changed = true
+            }
+          }
+        } catch { /* 忽略单次轮询失败 */ }
+      }
+      if (changed) setGeneratingTasks({ ...updated })
+    }, 2000)
+    return () => clearInterval(timer)
+  }, [generatingTasks])
 
   const handleCollect = async (id: number, collected: number) => {
     await videoApi.collect(id)
@@ -166,8 +204,18 @@ export default function VideoPage() {
     { title: '项目名称', dataIndex: 'title', key: 'title' },
     {
       title: '状态', dataIndex: 'status', key: 'status',
-      render: (s: string) => {
+      render: (s: string, record: VideoProject) => {
         const m = statusMap[s] || { color: 'default', label: s }
+        const task = generatingTasks[record.id]
+        if (task) {
+          return (
+            <div style={{ minWidth: 140 }}>
+              <Tag color="processing">生成中</Tag>
+              <Progress percent={task.progress} size="small" style={{ marginTop: 2 }} />
+              <div style={{ fontSize: 10, color: '#94a3b8' }}>{task.message}</div>
+            </div>
+          )
+        }
         return <Tag color={m.color}>{m.label}</Tag>
       },
     },
