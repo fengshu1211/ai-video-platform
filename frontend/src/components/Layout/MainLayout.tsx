@@ -20,12 +20,9 @@ const { Sider, Content, Header } = Layout
 
 const menuItems = [
   { key: '/', icon: <DashboardOutlined />, label: '工作台' },
-  { key: '/persona', icon: <IdcardOutlined />, label: '我的创作人设' },
-  { key: '/topics', icon: <FireOutlined />, label: '爆款选题' },
-  { key: '/content', icon: <EditOutlined />, label: '内容改写' },
-  { key: '/voice', icon: <SoundOutlined />, label: '语音系统' },
-  { key: '/video', icon: <VideoCameraOutlined />, label: '视频生成' },
-  { key: '/materials', icon: <FolderOpenOutlined />, label: '素材库' },
+  { key: '/template', icon: <ThunderboltOutlined />, label: '文案模板' },
+  { key: '/video', icon: <VideoCameraOutlined />, label: '视频制作' },
+  { key: '/voice', icon: <SoundOutlined />, label: '语音选择' },
   { key: '/library', icon: <HeartOutlined />, label: '成品视频库' },
 ]
 
@@ -60,7 +57,7 @@ export default function MainLayout({ user, onLogout }: { user?: any; onLogout?: 
             borderBottom: '1px solid rgba(148,163,184,0.08)',
           }}
         >
-          {collapsed ? '创作' : '自媒体创作平台'}
+          {collapsed ? '圣栎' : '圣栎美家'}
         </div>
         <Menu
           theme="dark"

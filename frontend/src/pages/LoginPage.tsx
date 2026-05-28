@@ -34,9 +34,9 @@ export default function LoginPage({ onLogin }: Props) {
   return (
     <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#0f172a' }}>
       <Card style={{ width: 380, borderRadius: 16, border: '1px solid rgba(148,163,184,0.1)' }}>
-        <Title level={3} style={{ textAlign: 'center', color: '#e2e8f0', marginBottom: 4 }}>自媒体创作平台</Title>
+        <Title level={3} style={{ textAlign: 'center', color: '#e2e8f0', marginBottom: 4 }}>圣栎美家</Title>
         <Text style={{ display: 'block', textAlign: 'center', color: '#94a3b8', marginBottom: 24, fontSize: 13 }}>
-          手机号注册，即刻开始创作
+          全屋定制短视频助手
         </Text>
         <Tabs activeKey={tab} onChange={setTab} centered items={[
           { key: 'login', label: '登录' },

@@ -100,85 +100,101 @@ def _generate_video_impl(project_id: int, _celery_id: str = "", _db=None):
 
         report(15, f"AI导演：{overall_theme or '已理解全文'}，{len(segments)}个视觉段落")
 
-        # ─── 2. 获取素材：AI生图优先 → Pexels搜图备用 → 纯色兜底 ───
+        # ─── 2. 获取素材：用户上传优先 → AI生图 → Pexels备用 → 纯色兜底 ───
         material_paths = []
 
-        # 生成时始终重新获取素材（旧路径可能已失效）
-        # 准备场景描述（供AI生图用）
-        scene_descriptions = []
-        if segments:
-            for seg in segments:
-                desc = seg.get("visual_desc", "") or seg.get("description", "") or seg.get("scene_cn", "") or ", ".join(seg.get("keywords_cn", [])[:3])
-                if desc:
-                    scene_descriptions.append(desc)
-        if not scene_descriptions and all_keywords:
-            scene_descriptions = [", ".join(all_keywords[:3])]
-
-        # ── 方案A：通义万相AI生图（主方案，理解中文历史场景）──
-        ai_images = []
-        prompts = (scene_descriptions[:5] if scene_descriptions else [script_text[:200]])
-        report(18, "AI正在生成场景图...")
+        # 1) 用户上传的素材（优先使用）
+        material_paths_json = project.material_paths_json or "[]"
         try:
-            from app.services.image_service import generate_scene_images
-            for prompt in prompts:
-                try:
-                    imgs = generate_scene_images(prompt, count=1)
-                    for img in imgs:
-                        rel = str(img.relative_to(img.parent.parent))
-                        material_paths.append(rel)
-                        ai_images.append(rel)
-                except Exception as e:
-                    print(f"[video_tasks] AI生图失败[{prompt[:30]}...]: {e}")
-            if ai_images:
-                report(25, f"AI生成了 {len(ai_images)} 张场景图")
-        except Exception as e:
-            print(f"[video_tasks] 通义万相不可用: {e}")
+            user_materials = json.loads(material_paths_json)
+        except Exception:
+            user_materials = []
+        # 校验用户素材是否存在
+        valid_user_mats = []
+        for mat in user_materials:
+            mat_path = Path(__file__).parent.parent.parent / "uploads" / mat
+            if mat_path.exists() and mat_path.stat().st_size > 500:
+                valid_user_mats.append(mat)
+        if valid_user_mats:
+            material_paths = [str(m.relative_to(m.parent.parent)) for m in valid_user_mats]
+            report(25, f"使用用户上传的 {len(material_paths)} 个素材")
 
-        # ── 方案B：Pexels/Pixabay搜图补充 ──
-        if len(material_paths) < 5:
-            report(30, f"搜图补充中（{len(all_keywords)}个关键词）...")
-            from app.services.material_service import search_images, download_image
-            for kw in all_keywords[:6]:
-                try:
-                    imgs = search_images(kw, per_page=2)
-                    if imgs:
-                        for img in imgs[:2]:
-                            try:
-                                path = download_image(img["download_url"], img["id"])
-                                if path and path.stat().st_size > 500:
-                                    material_paths.append(str(path.relative_to(path.parent.parent)))
-                            except Exception as e:
-                                print(f"[video_tasks] 下载图片失败 {img.get('id')}: {e}")
-                    else:
-                        print(f"[video_tasks] Pexels对关键词'{kw}'无结果")
-                except Exception as e:
-                    print(f"[video_tasks] 搜索关键词'{kw}'失败: {e}")
-                if len(material_paths) >= 8:
-                    break
+        # 2) 没有用户素材时：AI生图 + Pexels搜索
+        if not material_paths:
+            scene_descriptions = []
+            if segments:
+                for seg in segments:
+                    desc = seg.get("visual_desc", "") or seg.get("description", "") or seg.get("scene_cn", "") or ", ".join(seg.get("keywords_cn", [])[:3])
+                    if desc:
+                        scene_descriptions.append(desc)
+            if not scene_descriptions and all_keywords:
+                scene_descriptions = [", ".join(all_keywords[:3])]
 
-            # 搜视频补充
-            if len(material_paths) < 4:
-                report(35, "视频搜索补充...")
-                _search_and_download(all_keywords, material_paths)
-
-        # ── 方案C：AI一段段再补生图（针对历史类文案搜不到图的情况）──
-        if len(material_paths) < 2:
-            report(40, "素材不足，AI扩增生成...")
+            # ── 方案A：通义万相AI生图（主方案，理解中文历史场景）──
+            ai_images = []
+            prompts = (scene_descriptions[:5] if scene_descriptions else [script_text[:200]])
+            report(18, "AI正在生成场景图...")
             try:
                 from app.services.image_service import generate_scene_images
-                for desc in (scene_descriptions or [script_text[:200]]):
+                for prompt in prompts:
                     try:
-                        imgs = generate_scene_images(desc, count=2)
+                        imgs = generate_scene_images(prompt, count=1)
                         for img in imgs:
-                            material_paths.append(str(img.relative_to(img.parent.parent)))
-                    except Exception:
-                        pass
-                    if len(material_paths) >= 4:
-                        break
+                            rel = str(img.relative_to(img.parent.parent))
+                            material_paths.append(rel)
+                            ai_images.append(rel)
+                    except Exception as e:
+                        print(f"[video_tasks] AI生图失败[{prompt[:30]}...]: {e}")
+                if ai_images:
+                    report(25, f"AI生成了 {len(ai_images)} 张场景图")
             except Exception as e:
-                print(f"[video_tasks] 扩增生成失败: {e}")
+                print(f"[video_tasks] 通义万相不可用: {e}")
 
-        report(45, f"共准备 {len(material_paths)} 个素材")
+            # ── 方案B：Pexels/Pixabay搜图补充 ──
+            if len(material_paths) < 5:
+                report(30, f"搜图补充中（{len(all_keywords)}个关键词）...")
+                from app.services.material_service import search_images, download_image
+                for kw in all_keywords[:6]:
+                    try:
+                        imgs = search_images(kw, per_page=2)
+                        if imgs:
+                            for img in imgs[:2]:
+                                try:
+                                    path = download_image(img["download_url"], img["id"])
+                                    if path and path.stat().st_size > 500:
+                                        material_paths.append(str(path.relative_to(path.parent.parent)))
+                                except Exception as e:
+                                    print(f"[video_tasks] 下载图片失败 {img.get('id')}: {e}")
+                        else:
+                            print(f"[video_tasks] Pexels对关键词'{kw}'无结果")
+                    except Exception as e:
+                        print(f"[video_tasks] 搜索关键词'{kw}'失败: {e}")
+                    if len(material_paths) >= 8:
+                        break
+
+                # 搜视频补充
+                if len(material_paths) < 4:
+                    report(35, "视频搜索补充...")
+                    _search_and_download(all_keywords, material_paths)
+
+            # ── 方案C：AI一段段再补生图（针对历史类文案搜不到图的情况）──
+            if len(material_paths) < 2:
+                report(40, "素材不足，AI扩增生成...")
+                try:
+                    from app.services.image_service import generate_scene_images
+                    for desc in (scene_descriptions or [script_text[:200]]):
+                        try:
+                            imgs = generate_scene_images(desc, count=2)
+                            for img in imgs:
+                                material_paths.append(str(img.relative_to(img.parent.parent)))
+                        except Exception:
+                            pass
+                        if len(material_paths) >= 4:
+                            break
+                except Exception as e:
+                    print(f"[video_tasks] 扩增生成失败: {e}")
+
+            report(45, f"共准备 {len(material_paths)} 个素材")
 
         # ─── 3. 自动匹配BGM ───
         bgm_path = project.bgm_path

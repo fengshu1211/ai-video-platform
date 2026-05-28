@@ -51,8 +51,8 @@
       "lastFiredAt": 1779680782933,
       "recurring": true,
       "createdBySessionId": "ebc32aed-433b-4603-8199-93b4505e8ee7",
-      "createdByPid": 35616,
-      "createdByProcStart": "639155114238798130"
+      "createdByPid": 13492,
+      "createdByProcStart": "639155713793144710"
     },
     {
       "id": "f4c896cf",
@@ -62,8 +62,8 @@
       "lastFiredAt": 1779680782933,
       "recurring": true,
       "createdBySessionId": "ebc32aed-433b-4603-8199-93b4505e8ee7",
-      "createdByPid": 35616,
-      "createdByProcStart": "639155114238798130"
+      "createdByPid": 13492,
+      "createdByProcStart": "639155713793144710"
     },
     {
       "id": "8c18e142",
@@ -73,8 +73,8 @@
       "lastFiredAt": 1779680782933,
       "recurring": true,
       "createdBySessionId": "ebc32aed-433b-4603-8199-93b4505e8ee7",
-      "createdByPid": 35616,
-      "createdByProcStart": "639155114238798130"
+      "createdByPid": 13492,
+      "createdByProcStart": "639155713793144710"
     },
     {
       "id": "bb469116",
@@ -84,8 +84,8 @@
       "lastFiredAt": 1779680782933,
       "recurring": true,
       "createdBySessionId": "ebc32aed-433b-4603-8199-93b4505e8ee7",
-      "createdByPid": 35616,
-      "createdByProcStart": "639155114238798130"
+      "createdByPid": 13492,
+      "createdByProcStart": "639155713793144710"
     },
     {
       "id": "63c533c8",
@@ -95,8 +95,8 @@
       "lastFiredAt": 1779680782933,
       "recurring": true,
       "createdBySessionId": "ebc32aed-433b-4603-8199-93b4505e8ee7",
-      "createdByPid": 35616,
-      "createdByProcStart": "639155114238798130"
+      "createdByPid": 13492,
+      "createdByProcStart": "639155713793144710"
     },
     {
       "id": "7bd9e39e",
@@ -105,8 +105,18 @@
       "createdAt": 1779781560503,
       "recurring": true,
       "createdBySessionId": "ebc32aed-433b-4603-8199-93b4505e8ee7",
-      "createdByPid": 35616,
-      "createdByProcStart": "639155114238798130"
+      "createdByPid": 13492,
+      "createdByProcStart": "639155713793144710"
+    },
+    {
+      "id": "7b76a01a",
+      "cron": "17 9 1,15 * *",
+      "prompt": "技能/插件搜索与评估任务。执行以下步骤：\n\n1. 搜索 GitHub、Claude Code 社区、Reddit、npm 等平台最近两周新出的或热门的 Claude Code skills / plugins / MCP 工具\n2. 重点关注：代码质量检查、自动化测试、部署验证、调试工具、视频处理、字幕生成、React/前端开发 等方向\n3. 对找到的每个 skill/plugin 进行对比评价，格式如下：\n   - 名称 + 链接\n   - 功能简介（一句话）\n   - 评分/口碑\n   - 和现有工具对比（哪个更好、为什么）\n   - 建议：立即安装 / 观望 / 不推荐\n4. 输出报告到 CLAUDE.md 同目录，文件名 skill_report_YYYY-MM-DD.md\n5. 在对话中把报告摘要发给用户，让用户决定是否安装（不自行安装）\n6. 报告末尾附上当前所有已安装 skill 清单及用途说明",
+      "createdAt": 1779945685606,
+      "recurring": true,
+      "createdBySessionId": "ebc32aed-433b-4603-8199-93b4505e8ee7",
+      "createdByPid": 13492,
+      "createdByProcStart": "639155713793144710"
     }
   ]
 }

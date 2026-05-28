@@ -25,7 +25,11 @@
       "Bash(python -c \"from app.services.*)",
       "Bash(python -c \"import *)",
       "Write(d:/应用开发项目集/AI短视频创作平台项目/*)",
-      "Edit(d:/应用开发项目集/AI短视频创作平台项目/*)"
+      "Edit(d:/应用开发项目集/AI短视频创作平台项目/*)",
+      "Bash(/c/Users/43453/AppData/Local/Programs/Python/Python312/python.exe -c \"import ast; ast.parse\\(open\\('app/routers/templates.py', encoding='utf-8'\\).read\\(\\)\\); print\\('OK'\\)\")",
+      "Bash(/c/Users/43453/AppData/Local/Programs/Python/Python312/python.exe -c ' *)",
+      "Bash(/c/Users/43453/AppData/Local/Programs/Python/Python312/python.exe -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\('code:', d['code'], 'templates:', len\\(d['data']\\)\\); [print\\(f'  {t[\\\\\"id\\\\\"]}: {t[\\\\\"name\\\\\"]}'\\) for t in d['data']]\")",
+      "Bash(/c/Users/43453/AppData/Local/Programs/Python/Python312/python.exe -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\('code:', d['code']\\); print\\('script_id:', d['data']['script_id']\\); print\\('text:', d['data']['text'][:150]\\)\")"
     ],
     "defaultMode": "bypassPermissions"
   },

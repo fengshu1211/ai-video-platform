@@ -20,6 +20,7 @@ export default function VideoPage() {
   const [voices, setVoices] = useState<VoiceProfile[]>([])
   const [modalOpen, setModalOpen] = useState(false)
   const [uploadedMaterials, setUploadedMaterials] = useState<string[]>([])
+  const [uploadFileList, setUploadFileList] = useState<any[]>([])
   const [libraryOpen, setLibraryOpen] = useState(false)
   const [libraryFiles, setLibraryFiles] = useState<any[]>([])
   const [selectedLib, setSelectedLib] = useState<string[]>([])
@@ -27,24 +28,45 @@ export default function VideoPage() {
   const [wizardStep, setWizardStep] = useState(0)
   const [generatingTasks, setGeneratingTasks] = useState<Record<number, { taskId: number; progress: number; message: string }>>({})
 
-  const MaterialUploader = ({ onUpload, materials, acceptVideo }: { onUpload: any, materials: any, acceptVideo?: boolean }) => (
-    <Upload.Dragger multiple
-      accept={acceptVideo === false ? ".jpg,.jpeg,.png,.gif,.bmp,.webp" : ".jpg,.jpeg,.png,.gif,.bmp,.webp,.mp4,.mov,.avi,.webm,.mkv"}
-      action={(file: any) => "/api/upload/file?file_type=" + (file.name.match(/\.(mp4|mov|avi|webm|mkv)$/i) ? "videos" : "images")}
-      onChange={(info: any) => {
-        if (info.file.status === "done") {
-          const resp = info.file.response
-          if (resp?.code === 0) {
-            onUpload((prev: string[]) => prev.includes(resp.data.path) ? prev : [...prev, resp.data.path])
-            message.success(info.file.name + " 上传成功")
-          } else { message.error(info.file.name + " 失败") }
-        }
-      }}
-      showUploadList={true}>
-      <p className="ant-upload-drag-icon"><InboxOutlined style={{ fontSize: 28, color: "#3b82f6" }} /></p>
-      <p style={{ fontSize: 13 }}>点击或拖拽上传</p>
-    </Upload.Dragger>
-  )
+  const MaterialUploader = ({ onUpload, materials, acceptVideo }: { onUpload: any, materials: any, acceptVideo?: boolean }) => {
+    const id = 'file-upload-' + (acceptVideo ? 'vid' : 'img')
+    const accept = acceptVideo === false ? '.jpg,.jpeg,.png,.gif,.bmp,.webp' : '.jpg,.jpeg,.png,.gif,.bmp,.webp,.mp4,.mov,.avi,.webm,.mkv'
+    return (
+      <div>
+        <input id={id} type="file" multiple accept={accept} style={{ display: 'none' }}
+          onChange={(e) => {
+            const input = e.target
+            const files = input.files
+            if (!files || files.length === 0) return
+            const fileArr: File[] = []
+            for (let i = 0; i < files.length; i++) fileArr.push(files[i])
+            input.value = ''
+            fileArr.forEach((file: File) => {
+              const ft = /\.(mp4|mov|avi|webm|mkv)$/i.test(file.name) ? 'videos' : 'images'
+              const fd = new FormData()
+              fd.append('file', file)
+              fetch('/api/upload/file?file_type=' + ft, { method: 'POST', body: fd })
+                .then(r => r.json())
+                .then(data => {
+                  if (data.code === 0 && data.data?.path) {
+                    onUpload((prev: string[]) => prev.includes(data.data.path) ? prev : [...prev, data.data.path])
+                    message.success(file.name)
+                  } else {
+                    message.error(file.name + ': ' + (data.message || 'failed'))
+                  }
+                })
+                .catch((err: any) => message.error(file.name + ': ' + (err.message || 'error')))
+            })
+          }} />
+        <Button icon={<InboxOutlined />} onClick={() => document.getElementById(id)?.click()}>
+          选择文件上传
+        </Button>
+        <div style={{ marginTop: 8, fontSize: 12, color: '#94a3b8' }}>
+          已上传 {materials.length} 个素材
+        </div>
+      </div>
+    )
+  }
 
   const loadData = () => {
     Promise.all([
@@ -79,43 +101,24 @@ export default function VideoPage() {
       const values = form.getFieldsValue()
       if (!values.title) { message.warning('请输入项目名称'); return }
       if (!values.script_id) { message.warning('请选择文案'); return }
-      const mode = values.video_mode || 'image_animation'
-
-      let lip_sync_enabled = 0
-      let lip_sync_mode = 'none'
-      let image_animation_type: string | null = null
-
-      if (mode === 'digital_human') {
-        lip_sync_enabled = 1; lip_sync_mode = 'digital_human'
-      } else if (mode === 'lip_sync_pip') {
-        lip_sync_enabled = 1; lip_sync_mode = 'pip'
-      } else if (mode === 'lip_sync_full') {
-        lip_sync_enabled = 1; lip_sync_mode = 'full'
-      } else if (mode === 'auto_align') {
-        lip_sync_enabled = 1; lip_sync_mode = 'auto_align'
-      } else if (mode === 'audio_only') {
-        lip_sync_enabled = 1; lip_sync_mode = 'audio_only'
-      } else if (mode === 'image_animation') {
-        image_animation_type = values.animation_sub_type || 'zoom_in'
-      }
 
       const payload = {
         title: values.title,
         script_id: values.script_id,
         voice_id: values.voice_id || 1,
-        aspect_ratio: values.aspect_ratio || '9:16',
-        subtitle_enabled: values.subtitle_enabled ?? 1,
-        lip_sync_enabled,
-        lip_sync_mode,
-        image_animation_type,
+        aspect_ratio: '9:16',
+        subtitle_enabled: 1,
+        lip_sync_enabled: 0,
+        lip_sync_mode: 'none',
+        image_animation_type: 'zoom_in',
         material_paths_json: JSON.stringify(uploadedMaterials),
         bgm_volume: 0.3,
       }
       const result = await videoApi.create(payload)
-      if (!result || !result.id) { message.error('创建失败：' + JSON.stringify(result)); return }
-      message.success('项目创建成功')
+      if (!result || !result.id) { message.error('创建失败'); return }
+      message.success('项目创建成功，正在生成视频...')
       setModalOpen(false)
-      setWizardStep(0)
+      handleGenerate(result.id)
       setUploadedMaterials([])
       form.resetFields()
       loadData()
@@ -287,137 +290,36 @@ export default function VideoPage() {
             <Modal
         title="新建视频项目"
         open={modalOpen}
-        onCancel={() => { setModalOpen(false); setWizardStep(0) }}
+        onCancel={() => { setModalOpen(false); setUploadedMaterials([]) }}
         footer={null}
-        width={600}
+        width={520}
       >
-        <Steps current={wizardStep} size="small" style={{ marginBottom: 24 }}
-          items={[{ title: "基础信息" }, { title: "内容配音" }, { title: "视频模式" }]} />
-
         <Form form={form} layout="vertical">
-          {/* 隐藏域：保持跨步骤的字段值 */}
-          <Form.Item name="title" hidden><Input /></Form.Item>
-          <Form.Item name="script_id" hidden><Input /></Form.Item>
-          <Form.Item name="voice_id" hidden><Input /></Form.Item>
-          <Form.Item name="video_mode" hidden><Input /></Form.Item>
-          <Form.Item name="aspect_ratio" hidden><Input /></Form.Item>
-          <Form.Item name="subtitle_enabled" hidden><Input /></Form.Item>
-          {wizardStep === 0 && (
-            <>
-              <Form.Item name="title" label="项目名称" rules={[{ required: true, message: "请输入" }]}>
-                <Input placeholder="如：明清历史解说第一期" size="large" />
-              </Form.Item>
-              <Form.Item name="aspect_ratio" label="画面比例" initialValue="9:16">
-                <Select options={[
-                  { label: "9:16 竖版（手机全屏）", value: "9:16" },
-                  { label: "16:9 横版（电脑电视）", value: "16:9" },
-                  { label: "1:1 方形", value: "1:1" },
-                ]} />
-              </Form.Item>
-            </>
-          )}
-
-          {wizardStep === 1 && (
-            <>
-              <Form.Item name="script_id" label="解说文案" rules={[{ required: true, message: "请选择" }]}>
-                {scripts.length === 0 ? (
-                  <div style={{ padding: 16, background: "rgba(245,158,11,0.1)", borderRadius: 8, fontSize: 13, color: "#fbbf24" }}>
-                    还没有文案。请先去 <a href="/content" style={{ color: "#60a5fa" }}>内容改写</a> 创作或导入文案。
-                  </div>
-                ) : (
-                  <Select placeholder="选择已改写好的文案" size="large"
-                    options={scripts.map((s) => ({ label: (s.rewritten_text || s.original_text).slice(0, 60) + "...", value: s.id }))} />
-                )}
-              </Form.Item>
-              <Form.Item name="voice_id" label="配音">
-                <Select placeholder="选个声音" allowClear size="large"
-                  options={voices.map((v) => ({ label: v.name, value: v.id }))} />
-              </Form.Item>
-              <Form.Item name="subtitle_enabled" label="自动生成字幕" initialValue={true} valuePropName="checked">
-                <Switch />
-              </Form.Item>
-            </>
-          )}
-
-          {wizardStep === 2 && (
-            <>
-              <Form.Item name="video_mode" label="你想做什么样的视频？" initialValue="image_animation">
-                <Select size="large" options={[
-                  { label: "图文解说：AI自动搜图+镜头动画+字幕（不露脸）", value: "image_animation" },
-                  { label: "露脸口播：自拍说话视频→去原声→调速对齐文案→全屏（免费）", value: "auto_align" },
-                  { label: "自定义素材：自己的图片/视频→去杂音+自动剪辑+字幕", value: "none" },
-                  { label: "── 以下需要GPU ──", value: "", disabled: true },
-                  { label: "数字人：一张照片开口说话", value: "digital_human" },
-                  { label: "画中画口播：自拍视频缩小到角落", value: "lip_sync_pip" },
-                  { label: "全屏口播：自拍视频铺满全屏", value: "lip_sync_full" },
-                ]} />
-              </Form.Item>
-
-              <Form.Item noStyle shouldUpdate={(prev, cur) => prev.video_mode !== cur.video_mode}>
-                {({ getFieldValue }) => {
-                  const mode = getFieldValue("video_mode")
-                  return (
-                    <div>
-                      {mode === "image_animation" && (
-                        <>
-                          <Form.Item name="animation_sub_type" label="镜头效果" initialValue="zoom_in">
-                            <Select options={[
-                              { label: "缓慢放大", value: "zoom_in" }, { label: "缓慢缩小", value: "zoom_out" },
-                              { label: "左移", value: "pan_left" }, { label: "右移", value: "pan_right" },
-                              { label: "上移", value: "pan_up" }, { label: "下移", value: "pan_down" },
-                            ]} />
-                          </Form.Item>
-                          <Card size="small" title="上传素材（可选，不传则AI自动搜图）" style={{ borderRadius: 12, marginTop: 8 }}>
-                            <MaterialUploader onUpload={setUploadedMaterials} materials={uploadedMaterials} />
-                          </Card>
-                        </>
-                      )}
-                      {mode === "auto_align" && (
-                        <Card size="small" title="上传你的说话视频" style={{ borderRadius: 12, marginTop: 8 }}>
-                          <div style={{ fontSize: 12, color: "#94a3b8", marginBottom: 8 }}>
-                            录制一段自己对着镜头说话的竖屏视频，系统自动：去原声→调速对齐文案→全屏铺满
-                          </div>
-                          <MaterialUploader onUpload={setUploadedMaterials} materials={uploadedMaterials} acceptVideo />
-                        </Card>
-                      )}
-                      {mode === "none" && (
-                        <Card size="small" title="上传你的图片/视频素材" style={{ borderRadius: 12, marginTop: 8 }}>
-                          <div style={{ fontSize: 12, color: "#94a3b8", marginBottom: 8 }}>
-                            上传自己拍摄的图片和视频，系统自动：视频去杂音保留人声→剪辑匹配时长→加字幕→图片加镜头动画
-                          </div>
-                          <MaterialUploader onUpload={setUploadedMaterials} materials={uploadedMaterials} />
-                        </Card>
-                      )}
-                      {(mode === "digital_human" || mode === "lip_sync_pip" || mode === "lip_sync_full") && (
-                        <Card size="small" title="上传人脸素材" style={{ borderRadius: 12, marginTop: 8 }}>
-                          <div style={{ fontSize: 12, color: "#fbbf24", marginBottom: 8 }}>
-                            {mode === "digital_human" ? "上传一张正面照片" : "上传说话视频素材"}
-                          </div>
-                          <MaterialUploader onUpload={setUploadedMaterials} materials={uploadedMaterials} acceptVideo={mode !== "digital_human"} />
-                        </Card>
-                      )}
-                    </div>
-                  )
-                }}
-              </Form.Item>
-            </>
-          )}
-        </Form>
-
-        <div style={{ display: "flex", justifyContent: "space-between", marginTop: 24 }}>
-          <Button onClick={() => { if (wizardStep === 0) { setModalOpen(false); setWizardStep(0) } else setWizardStep(wizardStep - 1) }}>
-            {wizardStep === 0 ? "取消" : "上一步"}
+          <Form.Item name="title" label="项目名称" rules={[{ required: true, message: "请输入" }]}>
+            <Input placeholder="如：ENF衣柜产品展示" size="large" />
+          </Form.Item>
+          <Form.Item name="script_id" label="解说文案" rules={[{ required: true, message: "请选择" }]}>
+            {scripts.length === 0 ? (
+              <div style={{ padding: 12, background: "rgba(245,158,11,0.1)", borderRadius: 8, fontSize: 13, color: "#fbbf24" }}>
+                还没有文案，请先去 <a href="/template" style={{ color: "#60a5fa" }}>文案模板</a> 生成一条
+              </div>
+            ) : (
+              <Select placeholder="选择已生成的文案" size="large"
+                options={scripts.map((s) => ({ label: (s.rewritten_text || s.original_text).slice(0, 60) + "...", value: s.id }))} />
+            )}
+          </Form.Item>
+          <Form.Item name="voice_id" label="配音（可选，默认自动选择）">
+            <Select placeholder="选个声音" allowClear size="large"
+              options={voices.map((v) => ({ label: v.name, value: v.id }))} />
+          </Form.Item>
+          <Card size="small" title="上传产品照片或视频（可选）" style={{ borderRadius: 12, marginBottom: 16 }}>
+            <MaterialUploader onUpload={setUploadedMaterials} materials={uploadedMaterials} />
+          </Card>
+          <Button type="primary" size="large" block icon={<ThunderboltOutlined />}
+            onClick={handleCreate} style={{ borderRadius: 10 }}>
+            创建并生成视频
           </Button>
-          {wizardStep < 2 ? (
-            <Button type="primary" onClick={async () => {
-              if (wizardStep === 0) { try { await form.validateFields(["title"]) } catch { return } }
-              else if (wizardStep === 1) { try { await form.validateFields(["script_id"]) } catch { return } }
-              setWizardStep(wizardStep + 1)
-            }}>下一步</Button>
-          ) : (
-            <Button type="primary" onClick={handleCreate}>创建项目</Button>
-          )}
-        </div>
+        </Form>
       </Modal>
 
       <Modal

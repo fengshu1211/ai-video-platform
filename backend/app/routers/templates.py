@@ -1,202 +1,257 @@
-"""新手模板 - persona presets and sample scripts"""
-from fastapi import APIRouter
+"""全屋定制行业文案模板 API"""
+from fastapi import APIRouter, Depends
+from pydantic import BaseModel
+from sqlalchemy.orm import Session
+from app.models.database import get_db, RewrittenScript
+import json
 
 router = APIRouter(prefix="/api/templates", tags=["templates"])
 
-PERSONA_TEMPLATES = [
+class GenerateReq(BaseModel):
+    template_id: str
+    fields: dict
+
+TEMPLATES = [
     {
-        "id": "history",
-        "name": "历史科普",
-        "icon": "history",
-        "persona": {
-            "name": "历史科普号",
-            "industry": "历史科普",
-            "specialization": "",
-            "brand_name": "",
-            "role": "历史博主",
-            "personality": "幽默风趣, 擅长用大白话讲历史",
-            "features": "",
-            "content_style": "story",
-            "target_audience": "25-45岁历史爱好者",
-        },
-        "scripts": [
-            {"title": "秦始皇陵地宫揭秘", "duration": "约90秒",
-             "text": "秦始皇陵地宫从来不是史书里描写的水银成川, 机括如林, 而是一座仍在呼吸的地下星穹. 高精度三维激光测绘首次揭开地宫真容: 它并非向下深掘, 而是以九层宫阙向上堆叠. 封土之下76米, 量子磁力梯度仪捕捉到异常环形结构与多重密闭空间."},
+        "id": "product_showcase",
+        "name": "产品招商",
+        "desc": "面向经销商展示产品，突出合作优势",
+        "icon": "gold",
+        "structure": [
+            {"role": "system", "content": "你是全屋定制品牌圣栎美家的招商经理，面向全国经销商和定制门店招商。所有文案必须提到品牌名圣栎美家。圣栎美家是江山欧派旗下花木匠健康板材的四川和山东总代理，主营全屋定制柜类、木门、墙板，诚招各地经销商合作。口播风格专业有说服力。"},
+            {"role": "user", "content": (
+                "为以下全屋定制产品写一段面向经销商的抖音招商口播文案（约150-200字）：\n"
+                "产品名称：{product_name}\n"
+                "3个卖点：{selling_points}\n"
+                "材质/工艺：{material}\n"
+                "出厂参考价：{price}\n\n"
+                "结构要求：\n"
+                "1. 开头用'定制老板看过来'或'经销商注意'引入，直接说产品\n"
+                "2. 中间逐一说卖点和材质，强调出厂价优势\n"
+                "3. 结尾引导经销商咨询合作，必须提到品牌名圣栎美家\n"
+                "只输出文案，不要任何说明文字。"
+            )},
+        ],
+        "fields": [
+            {"key": "product_name", "label": "产品名称", "placeholder": "如：ENF级实木多层衣柜"},
+            {"key": "selling_points", "label": "3个卖点", "placeholder": "如：ENF环保、静音阻尼、一门到顶"},
+            {"key": "material", "label": "材质/工艺", "placeholder": "如：18mm实木多层板+PET肤感门板"},
+            {"key": "price", "label": "参考价格", "placeholder": "如：投影面积1280元/㎡"},
         ],
     },
     {
-        "id": "home",
-        "name": "家居装修",
-        "icon": "home",
-        "persona": {
-            "name": "家居装修号",
-            "industry": "家居装修",
-            "specialization": "",
-            "brand_name": "",
-            "role": "全屋定制设计师",
-            "personality": "专业严谨, 用数据说话",
-            "features": "",
-            "content_style": "fast",
-            "target_audience": "25-40岁装修业主",
-        },
-        "scripts": [
-            {"title": "全屋定制报价大揭秘", "duration": "约75秒",
-             "text": "一块普普通通的欧松板, 出厂价才37.8元, 到了报价单上摇身一变成了198元一平米. 这中间飞走的160块, 是木头, 是工艺, 还是品牌滤镜? 我们蹲点工厂, 翻烂合同, 扒了37家真实报价单, 把每笔钱流向摊在你面前."},
+        "id": "craft_knowledge",
+        "name": "工艺科普",
+        "desc": "讲解制作工艺，建立专业信任",
+        "icon": "bulb",
+        "structure": [
+            {"role": "system", "content": "你是全屋定制品牌圣栎美家的工艺专家。所有文案必须提到品牌名圣栎美家。圣栎美家是江山欧派旗下花木匠健康板材的四川和山东总代理。口播风格专业严谨但不枯燥。"},
+            {"role": "user", "content": (
+                "为以下全屋定制工艺写一段面向经销商的抖音科普文案（约150-200字）：\n"
+                "工艺名称：{craft_name}\n"
+                "相比其他工艺的优势：{advantages}\n"
+                "品质背书：{certificate}\n\n"
+                "结构要求：\n"
+                "1. 开头用你知道吗或很多人不知道引入\n"
+                "2. 解释工艺原理，用生活化比喻\n"
+                "3. 对比普通工艺，突出优势\n"
+                "4. 结尾用证书/检测报告背书，并提到与圣栎美家合作可以获得这种工艺支持\n"
+                "只输出文案，不要任何说明文字。"
+            )},
+        ],
+        "fields": [
+            {"key": "craft_name", "label": "工艺名称", "placeholder": "如：PUR封边 vs EVA封边"},
+            {"key": "advantages", "label": "工艺优势", "placeholder": "如：防水防潮、不易开胶、边缘光滑无缝"},
+            {"key": "certificate", "label": "品质背书", "placeholder": "如：ENF级环保检测报告、SGS认证"},
         ],
     },
     {
-        "id": "food",
-        "name": "美食探店",
-        "icon": "food",
-        "persona": {
-            "name": "美食探店号",
-            "industry": "美食探店",
-            "specialization": "",
-            "brand_name": "",
-            "role": "美食博主",
-            "personality": "亲和力强, 画面感十足",
-            "features": "",
-            "content_style": "humorous",
-            "target_audience": "18-35岁美食爱好者",
-        },
-        "scripts": [
-            {"title": "街边30年苍蝇馆子", "duration": "约60秒",
-             "text": "一个米其林大厨跟我说: 全城最好吃的回锅肉, 藏在一个连招牌都没有的苍蝇馆子里. 30年老店, 老板是个67岁的婆婆, 每天只炒30份. 今天带你去看看什么叫真正的锅气."},
+        "id": "avoid_pitfalls",
+        "name": "避坑指南",
+        "desc": "帮客户避开常见套路，引流到店",
+        "icon": "warning",
+        "structure": [
+            {"role": "system", "content": "你是全屋定制品牌圣栎美家的资深顾问。所有文案必须提到品牌名圣栎美家。圣栎美家是江山欧派旗下花木匠健康板材的四川和山东总代理。口播风格犀利直白。"},
+            {"role": "user", "content": (
+                "为以下全屋定制领域的坑写一段抖音口播避坑文案（约150-200字）：\n"
+                "坑的类型：{pitfall_type}\n"
+                "正确的避坑方案：{solution}\n\n"
+                "结构要求：\n"
+                "1. 开头用千万别XXX或你以为捡了便宜制造紧迫感\n"
+                "2. 列出最常见的2-3个坑，用真实价格对比\n"
+                "3. 给出靠谱的避坑方案\n"
+                "4. 结尾引导经销商到圣栎美家咨询合作\n"
+                "只输出文案，不要任何说明文字。"
+            )},
+        ],
+        "fields": [
+            {"key": "pitfall_type", "label": "坑的类型", "placeholder": "如：报价套路、板材以次充好、五金件减配"},
+            {"key": "solution", "label": "避坑方案", "placeholder": "如：认准ENF检测报告、合同注明板材品牌和厚度"},
         ],
     },
     {
-        "id": "tech",
-        "name": "数码评测",
-        "icon": "tech",
-        "persona": {
-            "name": "数码评测号",
-            "industry": "科技数码",
-            "specialization": "",
-            "brand_name": "",
-            "role": "数码博主",
-            "personality": "客观理性, 参数党最爱",
-            "features": "",
-            "content_style": "fast",
-            "target_audience": "20-35岁数码爱好者",
-        },
-        "scripts": [
-            {"title": "两万八的显卡值不值", "duration": "约80秒",
-             "text": "先别急着下单RTX5090 - 那张被黄牛炒到两万八的信仰神卡. 我们把RX7900XTX塞进旗舰平台, 实测赛博朋克2077光追全开加FSR3帧生成, 结果让人沉默. 这不是勉强能用, 这是真性能平权."},
+        "id": "package_promo",
+        "name": "套餐推广",
+        "desc": "推广套餐活动，引流到店成交",
+        "icon": "star",
+        "structure": [
+            {"role": "system", "content": "你是全屋定制品牌圣栎美家的销售经理。所有文案必须提到品牌名圣栎美家。圣栎美家是江山欧派旗下花木匠健康板材的四川和山东总代理。口播风格热情有感染力。"},
+            {"role": "user", "content": (
+                "为以下全屋定制套餐写一段抖音推广口播文案（约150-200字）：\n"
+                "套餐名称：{package_name}\n"
+                "套餐内容：{contents}\n"
+                "套餐价格：{price}\n"
+                "活动有效期：{validity}\n\n"
+                "结构要求：\n"
+                "1. 开头宣布福利（如重磅消息、仅限X天）\n"
+                "2. 说清楚套餐包含什么，强调性价比\n"
+                "3. 营造紧迫感（限量/限时）\n"
+                "4. 引导经销商立即联系圣栎美家了解合作政策\n"
+                "只输出文案，不要任何说明文字。"
+            )},
+        ],
+        "fields": [
+            {"key": "package_name", "label": "套餐名称", "placeholder": "如：全屋定制11件套"},
+            {"key": "contents", "label": "套餐内容", "placeholder": "如：3米衣柜+2米橱柜+鞋柜+酒柜+书柜+阳台柜"},
+            {"key": "price", "label": "套餐价格", "placeholder": "如：仅需9999元（原价15800）"},
+            {"key": "validity", "label": "有效期", "placeholder": "如：即日起至6月30日，仅限前20名"},
+        ],
+    },
+    {
+        "id": "customer_case",
+        "name": "客户案例",
+        "desc": "真实案例打动潜在客户",
+        "icon": "camera",
+        "structure": [
+            {"role": "system", "content": "你是全屋定制品牌圣栎美家的客服。所有文案必须提到品牌名圣栎美家。圣栎美家是江山欧派旗下花木匠健康板材的四川和山东总代理。口播风格真诚温暖。"},
+            {"role": "user", "content": (
+                "为以下全屋定制客户案例写一段抖音口播文案（约150-200字）：\n"
+                "案例描述：{case_desc}\n"
+                "使用的产品/板材：{products_used}\n\n"
+                "结构要求：\n"
+                "1. 开头展示改造后的惊艳效果\n"
+                "2. 简要说改造前的痛点\n"
+                "3. 介绍用了什么产品和板材\n"
+                "4. 结尾引导咨询同款方案，提到圣栎美家\n"
+                "只输出文案，不要任何说明文字。"
+            )},
+        ],
+        "fields": [
+            {"key": "case_desc", "label": "案例描述", "placeholder": "如：成都高新区张女士家89㎡小三房，全屋定制花了3.2万"},
+            {"key": "products_used", "label": "使用产品/板材", "placeholder": "如：花木匠ENF实木多层板+欧派同款拉手+PET门板"},
+        ],
+    },
+    {
+        "id": "brand_trust",
+        "name": "行业背书",
+        "desc": "展示品牌实力，建立客户信任",
+        "icon": "shield",
+        "structure": [
+            {"role": "system", "content": "你是全屋定制品牌圣栎美家的市场总监。所有文案必须提到品牌名圣栎美家。圣栎美家是江山欧派旗下花木匠健康板材的四川和山东总代理。口播风格大气自信。"},
+            {"role": "user", "content": (
+                "为以下品牌写一段抖音口播背书文案（约150-200字）：\n"
+                "合作品牌：{brand_name}\n"
+                "核心优势：{advantages}\n\n"
+                "结构要求：\n"
+                "1. 开头亮出品牌身份（我们是江山欧派旗下圣栎美家）\n"
+                "2. 用数据和事实说话（授权、检测报告、合作案例）\n"
+                "3. 强调服务承诺\n"
+                "4. 结尾引导全国定制工厂合作\n"
+                "只输出文案，不要任何说明文字。"
+            )},
+        ],
+        "fields": [
+            {"key": "brand_name", "label": "合作品牌", "placeholder": "如：江山欧派授权·花木匠健康板材"},
+            {"key": "advantages", "label": "核心优势", "placeholder": "如：四川+山东总代理、ENF级环保认证、面向全国定制工厂"},
+        ],
+    },
+    {
+        "id": "panel_sales",
+        "name": "板材推广",
+        "desc": "推广花木匠健康板材，面向全国定制工厂",
+        "icon": "gold",
+        "structure": [
+            {"role": "system", "content": "你是纬臻木业的板材销售经理。纬臻木业是江山欧派旗下花木匠健康板材的四川和山东总代理。所有文案必须提到公司名纬臻木业和板材品牌花木匠健康板材。口播风格专业自信。"},
+            {"role": "user", "content": (
+                "为花木匠健康板材写一段抖音推广口播文案（约150-200字）：\n"
+                "板材类型：{panel_type}\n"
+                "环保等级/认证：{eco_level}\n"
+                "核心优势：{advantages}\n"
+                "面向客户：{target_customers}\n\n"
+                "结构要求：\n"
+                "1. 开头用'定制工厂老板注意了'或'别再被板材商坑了'引入\n"
+                "2. 强调ENF环保等级和检测报告背书\n"
+                "3. 说明纬臻木业是江山欧派旗下花木匠板材的授权总代\n"
+                "4. 结尾引导全国定制工厂咨询合作\n"
+                "只输出文案，不要任何说明文字。"
+            )},
+        ],
+        "fields": [
+            {"key": "panel_type", "label": "板材类型", "placeholder": "如：ENF实木多层板、PET准分子肤感板、原木碳晶系列"},
+            {"key": "eco_level", "label": "环保等级/认证", "placeholder": "如：ENF级（甲醛释放≤0.025mg/m³）、F4星认证"},
+            {"key": "advantages", "label": "核心优势", "placeholder": "如：江山欧派授权总代、现货充足、一件代发、16年行业经验"},
+            {"key": "target_customers", "label": "面向客户", "placeholder": "如：全国定制工厂、全屋定制门店、装修公司"},
         ],
     },
 ]
 
 
-@router.get("/personas")
-def list_persona_templates():
-    return {"code": 0, "templates": [
-        {"id": t["id"], "name": t["name"], "icon": t["icon"],
-         "persona": t["persona"], "script_count": len(t["scripts"])}
-        for t in PERSONA_TEMPLATES
-    ]}
+@router.get("")
+def list_templates():
+    return {
+        "code": 0,
+        "data": [
+            {"id": t["id"], "name": t["name"], "desc": t["desc"], "icon": t["icon"], "fields": t["fields"]}
+            for t in TEMPLATES
+        ],
+    }
 
 
-PROJECT_TEMPLATES = [
-    {
-        "id": "history_qin",
-        "title": "秦始皇陵地宫揭秘",
-        "category": "历史科普",
-        "icon": "history",
-        "desc": "最新考古发现，反差感强，适合抖音/B站",
-        "script_text": "你敢相信吗? 秦始皇陵地宫从来不是史书里描写的水银成川机括如林, 而是一座仍在呼吸的地下星穹. 高精度三维激光测绘首次揭开地宫真容: 它并非向下深掘, 而是以九层宫阙向上堆叠. 封土之下76米, 量子磁力梯度仪捕捉到异常环形结构与多重密闭空间. 这不是传说, 是考古学等了几十年的答案.",
-        "voice_id": "zh-CN-YunxiNeural",
-        "aspect_ratio": "9:16",
-        "subtitle_enabled": True,
-        "image_animation_type": "zoom_in_slow",
-    },
-    {
-        "id": "history_three",
-        "title": "赤壁之战真相",
-        "category": "历史科普",
-        "icon": "history",
-        "desc": "颠覆传统认知，三国迷必看",
-        "script_text": "赤壁之战火烧连环船这个故事你一定听过. 但真相是: 曹操的八十万大军根本不存在, 那场大火可能也不是诸葛亮借来的东风. 最新地理考古发现, 赤壁古战场的实际位置和史书记载相差了整整40公里. 今天我们来还原一个真实的三国战场.",
-        "voice_id": "zh-CN-YunjianNeural",
-        "aspect_ratio": "9:16",
-        "subtitle_enabled": True,
-        "image_animation_type": "pan_right",
-    },
-    {
-        "id": "home_cabinet",
-        "title": "全屋定制报价大揭秘",
-        "category": "家居装修",
-        "icon": "home",
-        "desc": "数据揭露行业暴利，装修业主必看",
-        "script_text": "一块普普通通的欧松板出厂价才37.8元, 到了报价单上摇身一变成了198元一平米. 这中间飞走的160块, 是木头, 是工艺, 还是品牌滤镜? 我们蹲点工厂翻烂合同扒了37家真实报价单, 把每笔钱流向摊在你面前. 别再为看不见的成本买单, 这次我们算笔真账.",
-        "voice_id": "zh-CN-YunyangNeural",
-        "aspect_ratio": "9:16",
-        "subtitle_enabled": True,
-        "image_animation_type": "zoom_in_fast",
-    },
-    {
-        "id": "home_small",
-        "title": "18平老破小改造",
-        "category": "家居装修",
-        "icon": "home",
-        "desc": "小户型空间魔术，收纳翻4倍",
-        "script_text": "18平米一张单人床的面积却住进了一对深圳打拼的年轻夫妻. 不是将就而是把老破小玩成了空间魔术. 墙面翻下悬浮书桌入夜收起变温软双人床. 沙发掀开是37L储物舱, 镜柜后藏着吹风机和发胶. 他们没有买更大的房子只是把每一寸空气都签了劳动合同.",
-        "voice_id": "zh-CN-XiaoyiNeural",
-        "aspect_ratio": "9:16",
-        "subtitle_enabled": True,
-        "image_animation_type": "zoom_out_slow",
-    },
-    {
-        "id": "food_hidden",
-        "title": "街边30年苍蝇馆子",
-        "category": "美食探店",
-        "icon": "food",
-        "desc": "米其林大厨推荐的神秘小店",
-        "script_text": "一个米其林大厨跟我说全城最好吃的回锅肉藏在一个连招牌都没有的苍蝇馆子里. 30年老店老板是个67岁的婆婆每天只炒30份. 今天带你去看看什么叫真正的锅气. 那条巷子我路过一百次从来没注意到这家店, 直到那个大厨告诉我秘密.",
-        "voice_id": "zh-CN-XiaoxiaoNeural",
-        "aspect_ratio": "9:16",
-        "subtitle_enabled": True,
-        "image_animation_type": "pan_up",
-    },
-    {
-        "id": "tech_gpu",
-        "title": "两万八的显卡值不值",
-        "category": "数码评测",
-        "icon": "tech",
-        "desc": "RTX5090 vs RX7900XTX 实测对比",
-        "script_text": "先别急着下单RTX5090那张被黄牛炒到两万八的信仰神卡. 我们把RX7900XTX塞进旗舰平台实测赛博朋克2077光追全开加FSR3帧生成结果让人沉默. 这不是勉强能用这是真性能平权. 同样的2K高刷屏它不挑电源不烤主板连机箱风道都更宽容.",
-        "voice_id": "zh-CN-YunxiNeural",
-        "aspect_ratio": "9:16",
-        "subtitle_enabled": True,
-        "image_animation_type": "zoom_in_slow",
-    },
-]
+@router.post("/generate")
+def generate_script(req: GenerateReq, db: Session = Depends(get_db)):
+    template_id = req.template_id
+    fields = req.fields
+    import random as _rnd
+    STYLES = [
+        {"name": "活泼", "prompt": "用活泼热情的语气，多带口语，像朋友聊天一样。"},
+        {"name": "专业", "prompt": "用专业理性的语气，引用数据和标准，像行业顾问在讲解。"},
+        {"name": "幽默", "prompt": "用轻松幽默的语气，加一点调侃和自嘲，让人会心一笑又记住要点。"},
+    ]
+    style = _rnd.choice(STYLES)
 
+    tmpl = next((t for t in TEMPLATES if t["id"] == template_id), None)
+    if not tmpl:
+        return {"code": 1, "message": "模板不存在"}
 
-@router.get("/projects")
-def list_project_templates():
-    return {"code": 0, "templates": [
-        {"id": t["id"], "title": t["title"], "category": t["category"],
-         "icon": t["icon"], "desc": t["desc"]}
-        for t in PROJECT_TEMPLATES
-    ]}
+    messages = []
+    for item in tmpl["structure"]:
+        content = item["content"]
+        if item["role"] == "user":
+            content += f"\n口播风格：{style['prompt']}"
+        for key, val in fields.items():
+            content = content.replace("{" + key + "}", str(val))
+        messages.append({"role": item["role"], "content": content})
 
+    from openai import OpenAI
+    from app.config import DASHSCOPE_API_KEY, DASHSCOPE_BASE_URL
+    client = OpenAI(api_key=DASHSCOPE_API_KEY, base_url=DASHSCOPE_BASE_URL)
+    r = client.chat.completions.create(
+        model="qwen-plus",
+        messages=messages,
+        temperature=0.8,
+        max_tokens=600,
+    )
+    script = r.choices[0].message.content.strip()
 
-@router.post("/projects/{template_id}/apply")
-def apply_project_template(template_id: str):
-    for t in PROJECT_TEMPLATES:
-        if t["id"] == template_id:
-            return {"code": 0, "template": {
-                "title": t["title"], "script_text": t["script_text"],
-                "voice_id": t["voice_id"], "aspect_ratio": t["aspect_ratio"],
-                "subtitle_enabled": t["subtitle_enabled"],
-                "image_animation_type": t["image_animation_type"],
-            }}
-    return {"code": 404, "message": "模板不存在"}
+    record = RewrittenScript(
+        original_text=json.dumps(fields, ensure_ascii=False),
+        rewritten_text=script,
+        style=template_id,
+        word_count=len(script),
+        source_type="template",
+    )
+    db.add(record)
+    db.commit()
+    db.refresh(record)
 
-
-@router.get("/personas/{template_id}")
-def get_template(template_id: str):
-    for t in PERSONA_TEMPLATES:
-        if t["id"] == template_id:
-            return {"code": 0, "template": t}
-    return {"code": 404, "message": "template not found"}
+    return {"code": 0, "data": {"script_id": record.id, "text": script, "style": style["name"]}}

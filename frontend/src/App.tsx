@@ -6,6 +6,7 @@ import MainLayout from './components/Layout/MainLayout'
 import Dashboard from './pages/Dashboard'
 import TopicPage from './pages/TopicPage'
 import ContentPage from './pages/ContentPage'
+import TemplatePage from './pages/TemplatePage'
 import VoicePage from './pages/VoicePage'
 import VideoPage from './pages/VideoPage'
 import MaterialLibraryPage from './pages/MaterialLibraryPage'
@@ -59,6 +60,7 @@ function AppContent() {
             <Route index element={<Dashboard />} />
             <Route path="topics" element={<TopicPage />} />
             <Route path="content" element={<ContentPage />} />
+            <Route path="template" element={<TemplatePage />} />
             <Route path="voice" element={<VoicePage />} />
             <Route path="video" element={<VideoPage />} />
             <Route path="materials" element={<MaterialLibraryPage />} />
