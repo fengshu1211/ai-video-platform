@@ -1,8 +1,61 @@
 """视频生成异步任务——全自动管线"""
-import json
+import json, threading
+from pathlib import Path
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
-from app.config import DATABASE_URL
+from app.config import DATABASE_URL, OUTPUTS_DIR
+
+
+def _prepare_and_delegate(project_id: int, task_id: int):
+    """服务器端轻活：TTS合成语音 → 标记pending_worker交给本地渲染"""
+    engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
+    db = Session(engine)
+    try:
+        from app.models.database import VideoProject, AsyncTask, RewrittenScript, VoiceProfile
+
+        project = db.query(VideoProject).filter(VideoProject.id == project_id).first()
+        if not project:
+            return
+
+        task = db.query(AsyncTask).filter(AsyncTask.id == task_id).first()
+
+        # 获取文案
+        script_text = ""
+        if project.script_id:
+            script = db.query(RewrittenScript).filter(RewrittenScript.id == project.script_id).first()
+            if script:
+                script_text = script.rewritten_text or script.original_text
+        if not script_text:
+            if task: task.status = "failed"; task.progress_message = "没有文案"; db.commit()
+            return
+
+        # 获取语音参数
+        voice_id = "longxiaochun_v2"
+        if project.voice_id:
+            voice = db.query(VoiceProfile).filter(VoiceProfile.id == project.voice_id).first()
+            if voice and voice.voice_id:
+                voice_id = voice.voice_id
+
+        # 标记为等待Worker渲染（TTS等重活在Worker本地做）
+        if task:
+            task.status = "pending_worker"
+            task.progress = 10
+            task.progress_message = "等待本地渲染..."
+            db.commit()
+
+        print(f"[prepare] project #{project_id} -> pending_worker")
+    except Exception as e:
+        try:
+            task = db.query(AsyncTask).filter(AsyncTask.id == task_id).first()
+            if task:
+                task.status = "failed"
+                task.progress_message = f"准备失败: {str(e)[:100]}"
+                db.commit()
+        except Exception:
+            pass
+        print(f"[prepare] failed: {e}")
+    finally:
+        db.close()
 from app.models.database import AsyncTask, VideoProject, RewrittenScript, VoiceProfile
 
 
@@ -119,82 +172,13 @@ def _generate_video_impl(project_id: int, _celery_id: str = "", _db=None):
             material_paths = [str(m.relative_to(m.parent.parent)) for m in valid_user_mats]
             report(25, f"使用用户上传的 {len(material_paths)} 个素材")
 
-        # 2) 没有用户素材时：AI生图 + Pexels搜索
+        # 2) 没有用户素材时：直接走纯色背景（不调AI生图，不搜海外图库）
         if not material_paths:
-            scene_descriptions = []
-            if segments:
-                for seg in segments:
-                    desc = seg.get("visual_desc", "") or seg.get("description", "") or seg.get("scene_cn", "") or ", ".join(seg.get("keywords_cn", [])[:3])
-                    if desc:
-                        scene_descriptions.append(desc)
-            if not scene_descriptions and all_keywords:
-                scene_descriptions = [", ".join(all_keywords[:3])]
+            report(20, "没有上传素材，将使用品牌背景")
 
-            # ── 方案A：通义万相AI生图（主方案，理解中文历史场景）──
-            ai_images = []
-            prompts = (scene_descriptions[:5] if scene_descriptions else [script_text[:200]])
-            report(18, "AI正在生成场景图...")
-            try:
-                from app.services.image_service import generate_scene_images
-                for prompt in prompts:
-                    try:
-                        imgs = generate_scene_images(prompt, count=1)
-                        for img in imgs:
-                            rel = str(img.relative_to(img.parent.parent))
-                            material_paths.append(rel)
-                            ai_images.append(rel)
-                    except Exception as e:
-                        print(f"[video_tasks] AI生图失败[{prompt[:30]}...]: {e}")
-                if ai_images:
-                    report(25, f"AI生成了 {len(ai_images)} 张场景图")
-            except Exception as e:
-                print(f"[video_tasks] 通义万相不可用: {e}")
+        report(45, f"共准备 {len(material_paths)} 个素材")
 
-            # ── 方案B：Pexels/Pixabay搜图补充 ──
-            if len(material_paths) < 5:
-                report(30, f"搜图补充中（{len(all_keywords)}个关键词）...")
-                from app.services.material_service import search_images, download_image
-                for kw in all_keywords[:6]:
-                    try:
-                        imgs = search_images(kw, per_page=2)
-                        if imgs:
-                            for img in imgs[:2]:
-                                try:
-                                    path = download_image(img["download_url"], img["id"])
-                                    if path and path.stat().st_size > 500:
-                                        material_paths.append(str(path.relative_to(path.parent.parent)))
-                                except Exception as e:
-                                    print(f"[video_tasks] 下载图片失败 {img.get('id')}: {e}")
-                        else:
-                            print(f"[video_tasks] Pexels对关键词'{kw}'无结果")
-                    except Exception as e:
-                        print(f"[video_tasks] 搜索关键词'{kw}'失败: {e}")
-                    if len(material_paths) >= 8:
-                        break
-
-                # 搜视频补充
-                if len(material_paths) < 4:
-                    report(35, "视频搜索补充...")
-                    _search_and_download(all_keywords, material_paths)
-
-            # ── 方案C：AI一段段再补生图（针对历史类文案搜不到图的情况）──
-            if len(material_paths) < 2:
-                report(40, "素材不足，AI扩增生成...")
-                try:
-                    from app.services.image_service import generate_scene_images
-                    for desc in (scene_descriptions or [script_text[:200]]):
-                        try:
-                            imgs = generate_scene_images(desc, count=2)
-                            for img in imgs:
-                                material_paths.append(str(img.relative_to(img.parent.parent)))
-                        except Exception:
-                            pass
-                        if len(material_paths) >= 4:
-                            break
-                except Exception as e:
-                    print(f"[video_tasks] 扩增生成失败: {e}")
-
-            report(45, f"共准备 {len(material_paths)} 个素材")
+        # ─── 3. 自动匹配BGM        report(45, f"共准备 {len(material_paths)} 个素材")
 
         # ─── 3. 自动匹配BGM ───
         bgm_path = project.bgm_path

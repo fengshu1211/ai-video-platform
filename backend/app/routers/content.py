@@ -124,7 +124,7 @@ def generate_publish_content(script_id: int, db: Session = Depends(get_db)):
 
     response = client.chat.completions.create(
         model="qwen-plus",
-        messages=[{"role": "system", "content": """为以下视频文案生成4个平台的发布内容。输出JSON格式：
+        messages=[{"role": "user", "content": """为以下视频文案生成4个平台的发布内容。输出JSON格式：
 {
   "douyin": {"title": "抖音标题(≤30字，带话题#)", "desc": "抖音描述(≤100字，带标签)", "tags": "标签1 #标签2 #标签3"},
   "shipinhao": {"title": "视频号标题(≤16字，不能带任何标点符号，带话题#)", "desc": "视频号描述(≤80字)", "tags": "#标签1 #标签2"},

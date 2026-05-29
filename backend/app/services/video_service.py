@@ -163,12 +163,21 @@ def generate_video(
 
     report(30, "正在处理素材...")
     materials = material_paths or []
+    is_brand_mode = False
     if not materials:
-        black_bg = IMAGES_DIR / "_black_bg.png"
-        if not black_bg.exists():
-            from subprocess import run
-            run(["ffmpeg","-y","-f","lavfi","-i",f"color=c=0x1a1a2e:s={width}x{height}:d=1","-frames:v","1",str(black_bg)], check=True, timeout=10)
-        materials = [str(black_bg.relative_to(black_bg.parent.parent))]
+        # 品牌形象照兜底
+        brand_dir = IMAGES_DIR.parent / "brand"
+        import random as _rnd
+        brand_files = list(brand_dir.glob("*.jpg")) + list(brand_dir.glob("*.png"))
+        if brand_files:
+            materials = [str(_rnd.choice(brand_files).relative_to(brand_files[0].parent.parent))]
+            is_brand_mode = True
+        else:
+            black_bg = IMAGES_DIR / "_black_bg.png"
+            if not black_bg.exists():
+                from subprocess import run
+                run(["ffmpeg","-y","-f","lavfi","-i",f"color=c=0x1a1a2e:s={width}x{height}:d=1","-frames:v","1",str(black_bg)], check=True, timeout=10)
+            materials = [str(black_bg.relative_to(black_bg.parent.parent))]
 
     report(45, "正在处理音频...")
     final_audio = speech_path
@@ -199,11 +208,45 @@ def generate_video(
         "diagonal_lr", "diagonal_rl",
     ]
 
-    # 最多8段素材（多了编码慢，边际效益低）
-    use_mats = valid_mats[:8]
-    seg_count = len(use_mats)
-    per_dur = speech_duration / max(seg_count, 1)
-    for i, mat_path in enumerate(use_mats):
+    # 品牌信息卡模式：大字体文案排版 + 半透明背景
+    if is_brand_mode and valid_mats:
+        bg_path = valid_mats[0]
+        segments = [s.strip() for s in re.split(r"[。！？]", spoken_text) if s.strip() and len(s.strip()) > 5]
+        if len(segments) > 6:
+            merged = []; buf = ""
+            for s in segments:
+                buf += s + "。"
+                if len(buf) > 30: merged.append(buf); buf = ""
+            if buf: merged.append(buf)
+            segments = merged if merged else segments
+        seg_count = max(len(segments), 1)
+        per_dur = speech_duration / seg_count
+
+        fontfile = "C\\:/Windows/Fonts/simhei.ttf" if __import__('platform').system() == "Windows" else "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc"
+        for i, seg_text in enumerate(segments[:6]):
+            clip = OUTPUTS_DIR / f"card_{i}.mp4"
+            # 分行，每行最多14字
+            lines = [seg_text[j:j+14] for j in range(0, len(seg_text), 14)]
+            draws = []
+            for li, line in enumerate(lines):
+                esc = line.replace("\\", "\\\\").replace(":", "\\:").replace("'", "\\'")
+                y_pos = int(height * 0.35 + li * 50)
+                draws.append(f"drawtext=fontfile='{fontfile}':text='{esc}':fontsize=42:fontcolor=white:borderw=3:bordercolor=black@0.6:x=(w-tw)/2:y={y_pos}")
+            vf = (f"boxblur=2,"
+                  f"drawtext=fontfile='{fontfile}':text='圣栎美家':fontsize=26:fontcolor=white@0.35:x=(w-tw)/2:y={int(height*0.22)},"
+                  f"colorchannelmixer=aa=0.40,")
+            vf += ",".join(draws)
+            subprocess.run(["ffmpeg","-y","-loop","1","-i",str(bg_path),"-t",str(per_dur),
+                "-vf",vf,"-c:v","libx264","-preset","superfast","-pix_fmt","yuv420p",
+                str(clip)], check=True, timeout=60)
+            material_clips.append(clip)
+        report(62, f"品牌信息卡：{len(segments)}段")
+    else:
+        # 最多8段素材（多了编码慢，边际效益低）
+        use_mats = valid_mats[:8]
+        seg_count = len(use_mats)
+        per_dur = speech_duration / max(seg_count, 1)
+    for i, mat_path in enumerate(use_mats[:8] if not is_brand_mode else []):
         ext = mat_path.suffix.lower()
         if ext in (".jpg",".jpeg",".png",".gif",".bmp",".webp"):
             clip = OUTPUTS_DIR / f"clip_{i}_{mat_path.stem}.mp4"
@@ -216,17 +259,11 @@ def generate_video(
         elif ext in (".mp4",".mov",".avi",".webm",".mkv"):
             trimmed = OUTPUTS_DIR / f"trim_{i}_{mat_path.stem}.mp4"
             from subprocess import run
-            # 先尝试无损快切（不重新编码），失败则完整转码
-            try:
-                run(["ffmpeg","-y","-ss","0","-i",str(mat_path),
-                    "-t",str(per_dur),"-an","-c","copy",
-                    "-avoid_negative_ts","make_zero",str(trimmed)],
-                    check=True, timeout=15)
-            except Exception:
-                run(["ffmpeg","-y","-i",str(mat_path),"-t",str(per_dur),"-an",
-                    "-vf",f"{VIDEO_SCALE},fps=25,settb=1/25",
-                    "-c:v","libx264","-preset","superfast","-pix_fmt","yuv420p",
-                    "-r","25",str(trimmed)], check=True, timeout=60)
+            # 统一转码：裁剪时长+缩放至竖屏分辨率
+            run(["ffmpeg","-y","-i",str(mat_path),"-t",str(per_dur),"-an",
+                "-vf",f"{VIDEO_SCALE},fps=25,settb=1/25",
+                "-c:v","libx264","-preset","superfast","-pix_fmt","yuv420p",
+                "-r","25",str(trimmed)], check=True, timeout=120)
             material_clips.append(trimmed)
 
     if not material_clips:
@@ -240,7 +277,6 @@ def generate_video(
     if len(material_clips) > 1:
         concat_media(material_clips, merged_video)
     else:
-        import shutil
         shutil.copy2(str(material_clips[0]), str(merged_video))
 
     report(75, "正在合并音视频...")
@@ -283,8 +319,27 @@ def generate_video(
     # 7. 字幕 — 纯白字淡入淡出，简单可靠
     mode_suffix = f"_{lip_sync_mode}_{aspect_ratio.replace(':', 'x')}" if lip_sync_video else ""
     final_output = OUTPUTS_DIR / f"final_{speech_path.stem}{mode_suffix}.mp4"
-    # 字幕暂时关闭，直接输出
-    shutil.move(str(temp_output), str(final_output))
+    # ASS字幕（单滤镜烧录，2核友好）
+    if subtitle_enabled:
+        try:
+            sub_list = _split_text_to_subtitles(spoken_text, speech_duration)
+            if sub_list:
+                sub_list[-1]["end"] = speech_duration
+                ass_path = _build_karaoke_ass(sub_list, width, height, speech_duration, spoken_text)
+                if ass_path and ass_path.exists():
+                    from app.utils.ffmpeg_utils import burn_subtitles
+                    burn_subtitles(temp_output, ass_path, final_output, format="ass")
+                    ass_path.unlink(missing_ok=True)
+                    report(90, "字幕已添加")
+                else:
+                    shutil.move(str(temp_output), str(final_output))
+            else:
+                shutil.move(str(temp_output), str(final_output))
+        except Exception as e:
+            print(f"Subtitle failed: {e}")
+            shutil.move(str(temp_output), str(final_output))
+    else:
+        shutil.move(str(temp_output), str(final_output))
 
     # 8. 片头片尾淡入淡出
     # 8. 美化：暗角+增艳+锐化+淡入淡出
@@ -405,20 +460,22 @@ def _build_karaoke_ass(subtitles: list[dict], width: int, height: int,
 
     # 布局参数（竖屏720x1280）
     is_vertical = height > width
+    import platform as _pf
+    _is_win = _pf.system() == "Windows"
     if is_vertical:
-        font_size = 46
-        max_chars = 16
-        max_lines = 3
+        font_size = 50
+        max_chars = 14
+        max_lines = 2
     else:
-        font_size = max(42, int(height * 0.036))
-        max_chars = max(20, int(width / (font_size * 1.2)))
-        max_lines = 3
-    line_height = int(font_size * 1.4)
-    # 底部留白，2行字幕的底边距
-    bottom_margin = int(height * 0.12)
-    # 上行距底部 = bottom_margin + line_height, 下行距底部 = bottom_margin
+        font_size = max(44, int(height * 0.038))
+        max_chars = max(18, int(width / (font_size * 1.1)))
+        max_lines = 2
+    line_height = int(font_size * 1.35)
+    bottom_margin = int(height * 0.10)
     upper_margin = bottom_margin + line_height
     lower_margin = bottom_margin
+    # 字体：Windows用微软雅黑，Linux用Noto Sans CJK SC
+    _font = "Microsoft YaHei" if _is_win else "Noto Sans CJK SC"
 
     header = f"""[Script Info]
 ScriptType: v4.00+
@@ -428,8 +485,8 @@ WrapStyle: 2
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Line1,Noto Sans CJK SC,{font_size},&H00FFFFFF,&H00668888,&H00000000,&H66000000,-1,0,0,0,100,100,0,0,1,4,3,2,60,60,{upper_margin},1
-Style: Line2,Noto Sans CJK SC,{font_size},&H00FFFFFF,&H00668888,&H00000000,&H44000000,-1,0,0,0,100,100,0,0,1,3,2,2,60,60,{lower_margin},1
+Style: Line1,{_font},{font_size},&H00FFFFFF,&H0088AACC,&H00222222,&H88000000,-1,0,0,0,100,100,0,0,1,5,3,2,60,60,{upper_margin},1
+Style: Line2,{_font},{font_size},&H00FFFFFF,&H0088AACC,&H00222222,&H66000000,-1,0,0,0,100,100,0,0,1,4,2,2,60,60,{lower_margin},1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text

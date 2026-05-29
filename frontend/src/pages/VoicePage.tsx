@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Card, Row, Col, Tag, Button, Spin, Empty, message, Upload, Modal, Input, Select } from 'antd'
+import { Card, Row, Col, Tag, Button, Spin, Empty, message, Upload, Modal, Input, Select, Tabs } from 'antd'
 import {
   SoundOutlined, PlayCircleOutlined, PauseCircleOutlined,
   ManOutlined, WomanOutlined, RobotOutlined, UploadOutlined,
@@ -21,6 +21,60 @@ const genderIcon = (g: string) => {
   return <RobotOutlined style={{ fontSize: 28, color: '#fa8c16' }} />
 }
 
+function VoiceRecorder({ onRecorded }: { onRecorded: (blob: Blob) => void }) {
+  const [recording, setRecording] = useState(false)
+  const [duration, setDuration] = useState(0)
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null)
+  const chunksRef = useRef<Blob[]>([])
+  const timerRef = useRef<any>(null)
+
+  const startRecord = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      const mr = new MediaRecorder(stream, { mimeType: 'audio/webm;codecs=opus' })
+      chunksRef.current = []
+      mr.ondataavailable = (e) => { if (e.data.size > 0) chunksRef.current.push(e.data) }
+      mr.onstop = () => {
+        stream.getTracks().forEach(t => t.stop())
+        const blob = new Blob(chunksRef.current, { type: 'audio/webm' })
+        onRecorded(blob)
+        clearInterval(timerRef.current)
+      }
+      mr.start()
+      mediaRecorderRef.current = mr
+      setRecording(true)
+      setDuration(0)
+      timerRef.current = setInterval(() => setDuration(d => d + 1), 1000)
+    } catch {
+      message.error('无法访问麦克风，请允许浏览器使用麦克风权限')
+    }
+  }
+
+  const stopRecord = () => {
+    mediaRecorderRef.current?.stop()
+    setRecording(false)
+  }
+
+  return (
+    <div style={{ textAlign: 'center', padding: 12 }}>
+      {!recording ? (
+        <Button type="primary" icon={<PlayCircleOutlined />} onClick={startRecord} style={{ borderRadius: 20 }}>
+          开始录音（至少10秒）
+        </Button>
+      ) : (
+        <div>
+          <div style={{ fontSize: 24, fontWeight: 700, color: '#ef4444', marginBottom: 8 }}>
+            🔴 录音中 {duration}秒
+          </div>
+          <Button danger icon={<PauseCircleOutlined />} onClick={stopRecord} style={{ borderRadius: 20 }}>
+            停止录音
+          </Button>
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function VoicePage() {
   const [voices, setVoices] = useState<VoiceProfile[]>([])
   const [loading, setLoading] = useState(false)
@@ -32,6 +86,7 @@ export default function VoicePage() {
   const [uploadName, setUploadName] = useState('')
   const [uploadGender, setUploadGender] = useState('male')
   const [uploadFile, setUploadFile] = useState<File | null>(null)
+  const [recordedBlob, setRecordedBlob] = useState<Blob | null>(null)
   const [uploading, setUploading] = useState(false)
 
   // 编辑弹窗
@@ -119,9 +174,10 @@ export default function VoicePage() {
 
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-        <h2><SoundOutlined style={{ color: '#52c41a', marginRight: 8 }} />语音系统</h2>
-        <Button type="primary" icon={<PlusOutlined />} onClick={() => setUploadModalOpen(true)}>
+      <div style={{ marginBottom: 16 }}>
+        <h2 style={{ fontSize: 20 }}><SoundOutlined style={{ color: '#52c41a', marginRight: 8 }} />语音选择</h2>
+        <Button type="primary" block icon={<PlusOutlined />} onClick={() => setUploadModalOpen(true)}
+          style={{ marginTop: 8, borderRadius: 10 }}>
           上传自定义语音
         </Button>
       </div>
@@ -130,47 +186,43 @@ export default function VoicePage() {
         {voices.length === 0 && !loading ? (
           <Empty description="暂无可用语音" />
         ) : (
-          <Row gutter={[16, 16]}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             {voices.map((v) => (
-              <Col span={6} key={v.id}>
-                <Card
-                  hoverable
-                  extra={
-                    v.is_custom ? (
-                      <div style={{ display: 'flex', gap: 4 }}>
-                        <Button size="small" type="text" icon={<EditOutlined />} onClick={(e) => { e.stopPropagation(); openEdit(v) }} />
-                        <Button size="small" type="text" danger icon={<DeleteOutlined />} onClick={(e) => { e.stopPropagation(); handleDelete(v) }} />
+              <Card
+                key={v.id}
+                size="small"
+                style={{ borderRadius: 12, borderColor: 'rgba(148,163,184,0.1)' }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
+                    {genderIcon(v.gender || '')}
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontSize: 15, fontWeight: 600, color: '#e2e8f0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {v.name}
+                        <Tag color={v.is_custom ? 'orange' : 'green'} style={{ marginLeft: 6, fontSize: 10 }}>
+                          {v.is_custom ? '自定义' : '预置'}
+                        </Tag>
                       </div>
-                    ) : null
-                  }
-                  actions={[
-                    <Button
-                      type="link"
+                      <div style={{ fontSize: 12, color: '#94a3b8' }}>
+                        {v.gender === 'male' ? '男声' : v.gender === 'female' ? '女声' : v.style || ''}
+                      </div>
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
+                    <Button size="small" type="primary" ghost
                       icon={playingId === v.id ? <PauseCircleOutlined /> : <PlayCircleOutlined />}
-                      onClick={() => handlePlay(v.id)}
-                      key="play"
-                    >
+                      onClick={() => handlePlay(v.id)}>
                       {playingId === v.id ? '停止' : '试听'}
-                    </Button>,
-                    <Button type="link" icon={<VideoCameraOutlined />} onClick={() => navigate('/video', { state: { voiceId: v.id } })} key="video">
-                      生成视频
-                    </Button>,
-                  ]}
-                >
-                  <Card.Meta
-                    avatar={genderIcon(v.gender || '')}
-                    title={v.name}
-                    description={
-                      <div>
-                        <Tag color={v.is_custom ? 'orange' : 'green'}>{v.is_custom ? '自定义' : '预置'}</Tag>
-                        <Tag>{v.gender === 'male' ? '男声' : v.gender === 'female' ? '女声' : v.gender === 'special' ? '特殊' : v.style || v.provider}</Tag>
-                      </div>
-                    }
-                  />
-                </Card>
-              </Col>
+                    </Button>
+                    {v.is_custom && (
+                      <Button size="small" type="text" danger icon={<DeleteOutlined />}
+                        onClick={() => handleDelete(v)} />
+                    )}
+                  </div>
+                </div>
+              </Card>
             ))}
-          </Row>
+          </div>
         )}
       </Spin>
 
@@ -179,8 +231,10 @@ export default function VoicePage() {
         title="上传自定义语音"
         open={uploadModalOpen}
         onOk={handleUpload}
-        onCancel={() => { setUploadModalOpen(false); setUploadFile(null) }}
+        onCancel={() => { setUploadModalOpen(false); setUploadFile(null); setRecordedBlob(null) }}
         confirmLoading={uploading}
+        okText="上传"
+        width={400}
       >
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
           <Input
@@ -189,14 +243,26 @@ export default function VoicePage() {
             onChange={(e) => setUploadName(e.target.value)}
           />
           <Select value={uploadGender} onChange={setUploadGender} options={genderOptions} />
-          <Upload
-            accept=".mp3,.wav,.m4a,.ogg"
-            maxCount={1}
-            beforeUpload={(file) => { setUploadFile(file); return false }}
-            onRemove={() => setUploadFile(null)}
-          >
-            <Button icon={<UploadOutlined />}>选择音频样本（至少10秒，AI语音复刻）</Button>
-          </Upload>
+          <Tabs
+            items={[
+              {
+                key: 'record',
+                label: '手机录音',
+                children: <VoiceRecorder onRecorded={(blob) => { setUploadFile(new File([blob], 'recording.wav', { type: 'audio/wav' })); setRecordedBlob(blob) }} />,
+              },
+              {
+                key: 'file',
+                label: '文件上传',
+                children: (
+                  <Upload accept=".mp3,.wav,.m4a,.ogg" maxCount={1}
+                    beforeUpload={(file) => { setUploadFile(file); return false }}
+                    onRemove={() => setUploadFile(null)}>
+                    <Button icon={<UploadOutlined />}>选择音频文件（至少10秒）</Button>
+                  </Upload>
+                ),
+              },
+            ]}
+          />
         </div>
       </Modal>
 

@@ -142,7 +142,7 @@ def generate_titles(text: str, count: int = 5, user_id: int = None) -> list[str]
     response = _get_client().chat.completions.create(
         model="qwen-plus",
         messages=[
-            {"role": "system", "content": system},
+            {"role": "user", "content": system},
             {"role": "user", "content": f"根据以下内容生成{count}个爆款标题：\n{text[:1500]}"},
         ],
         temperature=0.9, max_tokens=500,
@@ -179,7 +179,7 @@ def rewrite_text(text: str, style: str = "similar", target_word_count: int | Non
     response = _get_client().chat.completions.create(
         model="qwen-plus",
         messages=[
-            {"role": "system", "content": system},
+            {"role": "user", "content": system},
             {"role": "user", "content": f"{prompt}\n\n原文案：\n{text}"},
         ],
         temperature=0.8,
@@ -226,7 +226,7 @@ def analyze_persona_style(persona_data: dict) -> dict:
 
     response = _get_client().chat.completions.create(
         model="qwen-plus",
-        messages=[{"role": "system", "content": "你是内容风格分析师，擅长根据用户特征生成专属内容创作模板。只输出JSON。"},
+        messages=[{"role": "user", "content": "你是内容风格分析师，擅长根据用户特征生成专属内容创作模板。只输出JSON。"},
                   {"role": "user", "content": prompt}],
         temperature=0.5, max_tokens=800,
     )
@@ -247,7 +247,7 @@ def extract_keywords_and_mood(text: str) -> dict:
     response = _get_client().chat.completions.create(
         model="qwen-plus",
         messages=[
-            {"role": "system", "content": """你是一个视频素材匹配助手。仔细分析文案内容，提取能精准匹配视频素材的搜索关键词。
+            {"role": "user", "content": """你是一个视频素材匹配助手。仔细分析文案内容，提取能精准匹配视频素材的搜索关键词。
 输出JSON格式：
 {
   "keywords_en": ["k1", "k2", "k3", "k4", "k5"],
@@ -310,7 +310,7 @@ def plan_visual_materials(text: str, user_id: int = None) -> dict:
     response = _get_client().chat.completions.create(
         model="qwen-plus",
         messages=[
-            {"role": "system", "content": director_system + """
+            {"role": "user", "content": director_system + """
 
 步骤：
 1. 先通读全文，理解：这是什么主题？什么年代/场景？有哪些核心视觉元素？情绪的起承转合？

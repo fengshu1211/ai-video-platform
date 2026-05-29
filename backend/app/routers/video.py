@@ -66,23 +66,24 @@ def generate_video(project_id: int, db: Session = Depends(get_db)):
     existing = db.query(AsyncTask).filter(
         AsyncTask.ref_id == project_id,
         AsyncTask.task_type == "video_generation",
-        AsyncTask.status.in_(["pending", "processing"]),
+        AsyncTask.status.in_(["pending", "processing", "pending_worker"]),
     ).first()
     if existing:
         return {"code": 0, "message": "任务已在后台生成中", "data": {"project_id": project_id, "task_id": existing.id}}
 
     # 追踪记录
-    track = AsyncTask(task_type="video_generation", ref_id=project_id, status="pending", progress=0, progress_message="排队中...")
+    track = AsyncTask(task_type="video_generation", ref_id=project_id, status="pending", progress=0, progress_message="正在准备素材...")
     db.add(track)
     db.commit()
     db.refresh(track)
     task_id = track.id
+    db.close()
 
-    # 后台线程执行生成，立即返回
-    from app.tasks.video_tasks import _run_video_generation
-    threading.Thread(target=_run_video_generation, args=(project_id,), daemon=True).start()
+    # 服务器先做TTS（轻活，几秒钟）
+    from app.tasks.video_tasks import _prepare_and_delegate
+    threading.Thread(target=_prepare_and_delegate, args=(project_id, task_id), daemon=True).start()
 
-    return {"code": 0, "message": "任务已提交，后台生成中",
+    return {"code": 0, "message": "任务已提交",
             "data": {"project_id": project_id, "task_id": task_id}}
 
 

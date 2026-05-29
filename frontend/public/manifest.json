@@ -1,11 +1,18 @@
 {
-  "name": "自媒体创作平台",
-  "short_name": "自媒体创作",
-  "description": "AI驱动的自媒体内容创作工具",
+  "name": "圣栎美家·短视频助手",
+  "short_name": "圣栎美家",
+  "description": "全屋定制行业短视频一键生成工具",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#0f172a",
   "theme_color": "#0f172a",
   "orientation": "portrait-primary",
-  "icons": []
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
 }

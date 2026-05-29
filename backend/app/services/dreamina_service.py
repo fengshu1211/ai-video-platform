@@ -37,7 +37,7 @@ def _extract_scene_prompts(text: str, count: int) -> list[str]:
     resp = client.chat.completions.create(
         model="qwen-plus",
         messages=[{
-            "role": "system",
+            "role": "user",
             "content": """你是历史纪录片的视觉导演。根据文案提取关键场景，为每个场景写即梦5.0的英文提示词。
 格式：主体描述+场景环境+光影氛围+镜头语言+画质标签。
 风格要求：Cinematic, historical documentary, realistic, 8K, masterpiece, ancient China.

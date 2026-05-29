@@ -27,7 +27,7 @@ const menuItems = [
 ]
 
 export default function MainLayout({ user, onLogout }: { user?: any; onLogout?: () => void }) {
-  const [collapsed, setCollapsed] = useState(false)
+  const [collapsed, setCollapsed] = useState(window.innerWidth < 768)
   const navigate = useNavigate()
   const location = useLocation()
 
@@ -37,6 +37,8 @@ export default function MainLayout({ user, onLogout }: { user?: any; onLogout?: 
         collapsible
         collapsed={collapsed}
         onCollapse={setCollapsed}
+        breakpoint="lg"
+        collapsedWidth={window.innerWidth < 768 ? 0 : 80}
         width={200}
         style={{
           background: 'rgba(30,41,59,0.85)',
@@ -68,11 +70,7 @@ export default function MainLayout({ user, onLogout }: { user?: any; onLogout?: 
           style={{ background: 'transparent', borderInlineEnd: 'none' }}
         />
         <div style={{ padding: '10px 12px', borderTop: '1px solid rgba(148,163,184,0.08)' }}>
-          {user && !collapsed && (
-            <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 8, padding: '0 4px' }}>
-              👤 {user.displayName || '用户'}
-            </div>
-          )}
+{}
           <Button type="text" size="small" icon={<SettingOutlined />}
             onClick={() => navigate('/settings')}
             style={{ color: '#64748b', fontSize: 12, width: '100%', justifyContent: 'flex-start' }}>

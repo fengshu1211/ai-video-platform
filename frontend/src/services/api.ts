@@ -32,7 +32,7 @@ api.interceptors.response.use(
 // ─── 文案模板 ───
 export const templateApi = {
   list: (): Promise<any> => api.get('/templates'),
-  generate: (data: { template_id: string; fields: Record<string, string> }): Promise<any> => api.post('/templates/generate', data),
+  generate: (data: { template_id: string; fields: Record<string, string>; style?: string }): Promise<any> => api.post('/templates/generate', data),
 }
 
 // ─── 赛道/选题 ───

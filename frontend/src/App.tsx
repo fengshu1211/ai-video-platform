@@ -26,6 +26,11 @@ function AppContent() {
     const saved = localStorage.getItem('current_user')
     if (saved) {
       try { setUser(JSON.parse(saved)) } catch {}
+    } else {
+      // 内部使用，自动创建默认用户
+      const defaultUser = { userId: 1, displayName: '管理员' }
+      setUser(defaultUser)
+      localStorage.setItem('current_user', JSON.stringify(defaultUser))
     }
     setChecking(false)
   }, [])

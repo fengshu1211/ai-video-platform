@@ -55,11 +55,14 @@ def generate_hot_topics(track_name: str, count: int = 8) -> list[dict]:
     response = _get_client().chat.completions.create(
         model="qwen-plus",
         messages=[
-            {"role": "system", "content": f"""你是自媒体选题分析专家。基于真实的网络搜索数据，结合{track_name}赛道特点，生成可能成为爆款的选题。
+            {"role": "user", "content": f"""你是自媒体选题分析专家。基于真实的网络搜索数据，结合{track_name}赛道特点，生成可能成为爆款的选题。
 输出JSON数组：
 [{{"title": "选题标题", "platform": "douyin|bilibili|xiaohongshu", "analysis": "基于真实数据的爆款原因分析（50字内）", "metrics": {{"views": "预估播放量", "likes": "预估点赞", "comments": "预估评论"}}}}]
-标题要有吸引力，每个选题标注适合的平台。只输出JSON数组。"""},
-            {"role": "user", "content": f"为【{track_name}】赛道生成{count}个当前最可能成为爆款的选题\n\n{search_context}"},
+标题要有吸引力，每个选题标注适合的平台。只输出JSON数组。
+
+为【{track_name}】赛道生成{count}个当前最可能成为爆款的选题
+
+{search_context}"""},
         ],
         temperature=0.8, max_tokens=3000,
     )

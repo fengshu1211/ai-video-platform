@@ -51,8 +51,8 @@
       "lastFiredAt": 1779680782933,
       "recurring": true,
       "createdBySessionId": "ebc32aed-433b-4603-8199-93b4505e8ee7",
-      "createdByPid": 13492,
-      "createdByProcStart": "639155713793144710"
+      "createdByPid": 25152,
+      "createdByProcStart": "639156988493753290"
     },
     {
       "id": "f4c896cf",
@@ -62,8 +62,8 @@
       "lastFiredAt": 1779680782933,
       "recurring": true,
       "createdBySessionId": "ebc32aed-433b-4603-8199-93b4505e8ee7",
-      "createdByPid": 13492,
-      "createdByProcStart": "639155713793144710"
+      "createdByPid": 25152,
+      "createdByProcStart": "639156988493753290"
     },
     {
       "id": "8c18e142",
@@ -73,8 +73,8 @@
       "lastFiredAt": 1779680782933,
       "recurring": true,
       "createdBySessionId": "ebc32aed-433b-4603-8199-93b4505e8ee7",
-      "createdByPid": 13492,
-      "createdByProcStart": "639155713793144710"
+      "createdByPid": 25152,
+      "createdByProcStart": "639156988493753290"
     },
     {
       "id": "bb469116",
@@ -84,8 +84,8 @@
       "lastFiredAt": 1779680782933,
       "recurring": true,
       "createdBySessionId": "ebc32aed-433b-4603-8199-93b4505e8ee7",
-      "createdByPid": 13492,
-      "createdByProcStart": "639155713793144710"
+      "createdByPid": 25152,
+      "createdByProcStart": "639156988493753290"
     },
     {
       "id": "63c533c8",
@@ -95,8 +95,8 @@
       "lastFiredAt": 1779680782933,
       "recurring": true,
       "createdBySessionId": "ebc32aed-433b-4603-8199-93b4505e8ee7",
-      "createdByPid": 13492,
-      "createdByProcStart": "639155713793144710"
+      "createdByPid": 25152,
+      "createdByProcStart": "639156988493753290"
     },
     {
       "id": "7bd9e39e",
@@ -105,8 +105,8 @@
       "createdAt": 1779781560503,
       "recurring": true,
       "createdBySessionId": "ebc32aed-433b-4603-8199-93b4505e8ee7",
-      "createdByPid": 13492,
-      "createdByProcStart": "639155713793144710"
+      "createdByPid": 25152,
+      "createdByProcStart": "639156988493753290"
     },
     {
       "id": "7b76a01a",
@@ -115,8 +115,18 @@
       "createdAt": 1779945685606,
       "recurring": true,
       "createdBySessionId": "ebc32aed-433b-4603-8199-93b4505e8ee7",
-      "createdByPid": 13492,
-      "createdByProcStart": "639155713793144710"
+      "createdByPid": 25152,
+      "createdByProcStart": "639156988493753290"
+    },
+    {
+      "id": "d0d5aed2",
+      "cron": "37 10 * * 1",
+      "prompt": "检查 DeepSeek API 对 Anthropic 兼容接口的 system 角色支持情况。搜索关键词：deepseek api anthropic compatible system role support 2025。如果 DeepSeek 已恢复支持 system 角色，告知用户可以更新 Claude Code 到最新版；如果仍未支持，记录当前状态。另外也搜一下有没有 Claude Code 针对 DeepSeek 的兼容性更新。",
+      "createdAt": 1780044130621,
+      "recurring": true,
+      "createdBySessionId": "ebc32aed-433b-4603-8199-93b4505e8ee7",
+      "createdByPid": 25152,
+      "createdByProcStart": "639156988493753290"
     }
   ]
 }
