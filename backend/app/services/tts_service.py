@@ -351,7 +351,7 @@ def _edge_tts_segmented(text: str, voice: str, return_subtitles: bool = False):
 
         # 计算本段音频时长作为下一段的偏移
         from app.utils.ffmpeg_utils import get_media_duration
-        time_offset += get_media_duration(seg_audio)
+        time_offset += get_media_duration(Path(seg_audio))
 
     # 拼接音频
     if len(audio_parts) == 1:

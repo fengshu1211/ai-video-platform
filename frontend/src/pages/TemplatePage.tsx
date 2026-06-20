@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
-import { Card, Input, Button, message, Row, Col, Typography, Form, Tag, Tabs, Select } from 'antd'
+import { Card, Input, Button, message, Row, Col, Typography, Form, Tag, Tabs, Select, AutoComplete } from 'antd'
 import { ThunderboltOutlined, VideoCameraOutlined, GoldOutlined, BulbOutlined, WarningOutlined, StarOutlined, CameraOutlined, SafetyOutlined, ShopOutlined, BuildOutlined } from '@ant-design/icons'
 import { templateApi } from '../services/api'
 
@@ -138,7 +138,19 @@ export default function TemplatePage() {
                 label={f.label}
                 rules={[{ required: true, message: '请填写' + f.label }]}
               >
-                <Input placeholder={f.placeholder} size="large" />
+                {f.options?.length ? (
+                  <AutoComplete
+                    placeholder={f.placeholder}
+                    options={f.options.map((o: string) => ({ value: o }))}
+                    size="large"
+                    allowClear
+                    filterOption={(input, option) =>
+                      (option?.value ?? '').toString().toLowerCase().includes(String(input).toLowerCase())
+                    }
+                  />
+                ) : (
+                  <Input placeholder={f.placeholder} size="large" />
+                )}
               </Form.Item>
             ))}
           </Form>

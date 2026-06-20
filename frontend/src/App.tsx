@@ -15,6 +15,7 @@ import SettingsPage from './pages/SettingsPage'
 import PersonaPage from './pages/PersonaPage'
 import QuickStart from './pages/QuickStart'
 import SetupWizard from './components/SetupWizard'
+import QuickVideoPage from './pages/QuickVideoPage'
 import LoginPage from './pages/LoginPage'
 
 function AppContent() {
@@ -37,9 +38,14 @@ function AppContent() {
 
   useEffect(() => {
     if (!user) return
-    const keys = localStorage.getItem('user_api_keys')
     const seen = localStorage.getItem('setup_wizard_seen')
-    if (!keys && !seen) setShowWizard(true)
+    // 后端已配置共享 Key，首次打开直接跳过向导
+    if (!seen) {
+      localStorage.setItem('setup_wizard_seen', '1')
+      localStorage.setItem('user_api_keys', JSON.stringify({
+        dashscope_key: '', siliconflow_key: '',
+      }))
+    }
   }, [user])
 
   const handleLogin = (userId: number, name: string) => {
@@ -65,6 +71,7 @@ function AppContent() {
             <Route index element={<Dashboard />} />
             <Route path="topics" element={<TopicPage />} />
             <Route path="content" element={<ContentPage />} />
+            <Route path="quick-video" element={<QuickVideoPage />} />
             <Route path="template" element={<TemplatePage />} />
             <Route path="voice" element={<VoicePage />} />
             <Route path="video" element={<VideoPage />} />

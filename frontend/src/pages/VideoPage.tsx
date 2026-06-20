@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
 import { useLocation } from 'react-router-dom'
-import { Table, Tag, Button, Modal, Form, Input, Select, message, Switch, Progress, Empty, Alert, Card, Upload, Image, Popconfirm, Steps } from 'antd'
+import { Table, Tag, Button, Modal, Form, Input, Select, message, Switch, Progress, Empty, Alert, Card, Upload, Image, Popconfirm, Steps, Space, Dropdown } from 'antd'
 import {
   VideoCameraOutlined, PlusOutlined, PlayCircleOutlined, DeleteOutlined,
   ThunderboltOutlined, InboxOutlined, HeartOutlined, HeartFilled,
+  EllipsisOutlined, EditOutlined,
 } from '@ant-design/icons'
 import { videoApi, contentApi, voiceApi, uploadApi, taskApi } from '../services/api'
 import type { VideoProject } from '../types/video'
@@ -19,6 +20,7 @@ export default function VideoPage() {
   const [scripts, setScripts] = useState<RewrittenScript[]>([])
   const [voices, setVoices] = useState<VoiceProfile[]>([])
   const [modalOpen, setModalOpen] = useState(false)
+  const [editingId, setEditingId] = useState<number | null>(null)  // 编辑中的项目ID，null=新建
   const [uploadedMaterials, setUploadedMaterials] = useState<string[]>([])
   const [uploadFileList, setUploadFileList] = useState<any[]>([])
   const [libraryOpen, setLibraryOpen] = useState(false)
@@ -28,42 +30,70 @@ export default function VideoPage() {
   const [wizardStep, setWizardStep] = useState(0)
   const [generatingTasks, setGeneratingTasks] = useState<Record<number, { taskId: number; progress: number; message: string }>>({})
 
-  const MaterialUploader = ({ onUpload, materials, acceptVideo }: { onUpload: any, materials: any, acceptVideo?: boolean }) => {
-    const id = 'file-upload-' + (acceptVideo ? 'vid' : 'img')
-    const accept = acceptVideo === false ? '.jpg,.jpeg,.png,.gif,.bmp,.webp' : '.jpg,.jpeg,.png,.gif,.bmp,.webp,.mp4,.mov,.avi,.webm,.mkv'
+  // 上传组件 — input 覆盖式，避开 Modal 拦截
+  const MaterialUploader = ({ onUpload, materials }: { onUpload: any, materials: any, acceptVideo?: boolean }) => {
+    const [busy, setBusy] = useState(false)
+
+    const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+      const files = e.target.files
+      if (!files || files.length === 0) return
+      setBusy(true)
+      const file = files[0]
+      const fd = new FormData()
+      fd.append('file', file)
+      const ft = /\.(mp4|mov|avi|webm|mkv)$/i.test(file.name) ? 'videos' : 'images'
+      fetch(`/api/upload/file?file_type=${ft}`, { method: 'POST', body: fd })
+        .then(r => r.json())
+        .then(data => {
+          if (data.code === 0 && data.data?.path) {
+            onUpload((prev: string[]) => prev.includes(data.data.path) ? prev : [...prev, data.data.path])
+            message.success(`${file.name} 上传成功`)
+          } else {
+            message.error(`${file.name}：${data.message || '失败'}`)
+          }
+        })
+        .catch(() => message.error(`${file.name}：网络错误`))
+        .finally(() => {
+          setBusy(false)
+          const el = document.getElementById('_mp_upload') as HTMLInputElement
+          if (el) el.value = ''
+        })
+    }
+
     return (
-      <div>
-        <input id={id} type="file" multiple accept={accept} style={{ display: 'none' }}
-          onChange={(e) => {
-            const input = e.target
-            const files = input.files
-            if (!files || files.length === 0) return
-            const fileArr: File[] = []
-            for (let i = 0; i < files.length; i++) fileArr.push(files[i])
-            input.value = ''
-            fileArr.forEach((file: File) => {
-              const ft = /\.(mp4|mov|avi|webm|mkv)$/i.test(file.name) ? 'videos' : 'images'
-              const fd = new FormData()
-              fd.append('file', file)
-              fetch('/api/upload/file?file_type=' + ft, { method: 'POST', body: fd })
-                .then(r => r.json())
-                .then(data => {
-                  if (data.code === 0 && data.data?.path) {
-                    onUpload((prev: string[]) => prev.includes(data.data.path) ? prev : [...prev, data.data.path])
-                    message.success(file.name)
-                  } else {
-                    message.error(file.name + ': ' + (data.message || 'failed'))
-                  }
-                })
-                .catch((err: any) => message.error(file.name + ': ' + (err.message || 'error')))
-            })
-          }} />
-        <Button icon={<InboxOutlined />} onClick={() => document.getElementById(id)?.click()}>
-          选择文件上传
-        </Button>
-        <div style={{ marginTop: 8, fontSize: 12, color: '#94a3b8' }}>
-          已上传 {materials.length} 个素材
+      <div style={{ position: 'relative', marginBottom: 8 }}>
+        <div style={{
+          padding: '12px 16px', border: '2px dashed rgba(148,163,184,0.25)', borderRadius: 8,
+          textAlign: 'center', color: busy ? '#3b82f6' : '#94a3b8', fontSize: 14,
+          background: busy ? 'rgba(59,130,246,0.05)' : 'transparent',
+          pointerEvents: 'none',
+        }}>
+          {busy ? '上传中...' : materials.length > 0 ? `已上传 ${materials.length} 个文件，点此继续添加` : '点击添加图片或视频素材'}
         </div>
+        <input
+          id="_mp_upload"
+          type="file"
+          multiple
+          accept=".jpg,.jpeg,.png,.gif,.webp,.bmp,.mp4,.mov,.avi,.webm,.mkv"
+          onChange={handleChange}
+          style={{
+            position: 'absolute', top: 0, left: 0, width: '100%', height: '100%',
+            opacity: 0, cursor: 'pointer', zIndex: 10,
+          }}
+        />
+        {materials.length > 0 && (
+          <div style={{ marginTop: 8 }}>
+            {materials.map((path: string, i: number) => {
+              const name = path.split('/').pop() || path
+              return (
+                <Tag key={i} closable onClose={() => onUpload((prev: string[]) => prev.filter((p) => p !== path))}
+                  style={{ marginBottom: 4 }}>
+                  {name.length > 20 ? name.slice(0, 18) + '...' : name}
+                </Tag>
+              )
+            })}
+          </div>
+        )}
       </div>
     )
   }
@@ -106,29 +136,36 @@ export default function VideoPage() {
         title: values.title,
         script_id: values.script_id,
         voice_id: values.voice_id || 1,
-        aspect_ratio: '9:16',
-        subtitle_enabled: 1,
-        lip_sync_enabled: 0,
-        lip_sync_mode: 'none',
-        image_animation_type: 'zoom_in',
         material_paths_json: JSON.stringify(uploadedMaterials),
-        bgm_volume: 0.3,
       }
-      const result = await videoApi.create(payload)
-      if (!result || !result.id) { message.error('创建失败'); return }
-      message.success('项目创建成功，正在生成视频...')
-      setModalOpen(false)
-      handleGenerate(result.id)
-      setUploadedMaterials([])
-      form.resetFields()
+
+      if (editingId) {
+        // 编辑已有项目
+        await videoApi.update(editingId, payload)
+        message.success('项目已更新，正在重新生成视频...')
+        setModalOpen(false)
+        setEditingId(null)
+        setUploadedMaterials([])
+        form.resetFields()
+        handleGenerate(editingId)
+      } else {
+        // 新建项目
+        const result = await videoApi.create({ ...payload, aspect_ratio: '9:16', subtitle_enabled: 1, lip_sync_enabled: 0, lip_sync_mode: 'none', image_animation_type: 'zoom_in', bgm_volume: 0.3 })
+        if (!result || !result.id) { message.error('创建失败'); return }
+        message.success('项目创建成功，正在生成视频...')
+        setModalOpen(false)
+        handleGenerate(result.id)
+        setUploadedMaterials([])
+        form.resetFields()
+      }
       loadData()
     } catch (e: any) {
       if (e?.errorFields) {
         message.warning('请完善：' + e.errorFields.map((f: any) => f.name.join('/')).join('、'))
       } else if (e?.message) {
-        message.error('创建失败：' + e.message)
+        message.error('操作失败：' + e.message)
       } else {
-        message.error('创建失败，请检查必填项')
+        message.error('操作失败，请检查必填项')
       }
     }
   }
@@ -233,26 +270,35 @@ export default function VideoPage() {
     {
       title: '操作', key: 'actions',
       render: (_: any, record: VideoProject) => (
-        <div style={{ display: 'flex', gap: 8 }}>
+        <Space size={4} wrap>
           {record.status === 'draft' && (
             <Button size="small" type="primary" icon={<ThunderboltOutlined />} onClick={() => handleGenerate(record.id)}>
-              一键生成
+              生成
             </Button>
           )}
           {record.status === 'completed' && record.output_path && (
-            <Button size="small" type="link" onClick={() => window.open(`/api/video/projects/${record.id}/output`, '_blank')}>
+            <Button size="small" type="primary" ghost onClick={() => window.open(`/api/video/projects/${record.id}/output`, '_blank')}>
               播放
             </Button>
           )}
-          {record.status === 'completed' && (
-            <Button size="small" type="link"
-              icon={record.collected ? <HeartFilled style={{ color: '#eb2f96' }} /> : <HeartOutlined />}
-              onClick={() => handleCollect(record.id, record.collected)}>
-              {record.collected ? '已收藏' : '收藏'}
-            </Button>
-          )}
-          <Button size="small" danger icon={<DeleteOutlined />} onClick={() => handleDelete(record.id)}>删除</Button>
-        </div>
+          <Dropdown menu={{ items: [
+            { key: 'edit', icon: <EditOutlined />, label: '编辑', onClick: () => {
+              setEditingId(record.id)
+              form.setFieldsValue({ title: record.title, script_id: record.script_id, voice_id: record.voice_id })
+              try {
+                const mats = JSON.parse(record.material_paths_json || '[]')
+                setUploadedMaterials(Array.isArray(mats) ? mats : [])
+              } catch { setUploadedMaterials([]) }
+              setModalOpen(true)
+            }},
+            ...(record.status === 'completed' ? [{ key: 'collect', icon: record.collected ? <HeartFilled style={{color:'#eb2f96'}}/> : <HeartOutlined />, label: record.collected ? '取消收藏' : '收藏', onClick: () => handleCollect(record.id, record.collected) }] : []),
+            { key: 'del', icon: <DeleteOutlined />, label: '删除', danger: true, onClick: () => {
+              Modal.confirm({ title: '确认删除？', content: `删除项目「${record.title}」后不可恢复`, okText: '删除', okType: 'danger', cancelText: '取消', onOk: () => handleDelete(record.id) })
+            }},
+          ]}}>
+            <Button size="small" icon={<EllipsisOutlined />}>更多</Button>
+          </Dropdown>
+        </Space>
       ),
     },
   ]
@@ -266,7 +312,7 @@ export default function VideoPage() {
             message.warning('还没有文案，请先去「内容改写」创作文案')
             return
           }
-          setModalOpen(true)
+          setEditingId(null); form.resetFields(); setModalOpen(true)
         }}>
           新建项目
         </Button>
@@ -280,6 +326,7 @@ export default function VideoPage() {
         style={{ marginBottom: 16 }}
       />
 
+
       <Table
         columns={columns}
         dataSource={projects}
@@ -288,11 +335,12 @@ export default function VideoPage() {
       />
 
             <Modal
-        title="新建视频项目"
+        title={editingId ? `编辑项目 #${editingId}` : '新建视频项目'}
         open={modalOpen}
-        onCancel={() => { setModalOpen(false); setUploadedMaterials([]) }}
+        onCancel={() => { setModalOpen(false); setEditingId(null); form.resetFields() }}
         footer={null}
-        width={520}
+        width={window.innerWidth < 600 ? '95%' : 520}
+        style={{ top: 20 }}
       >
         <Form form={form} layout="vertical">
           <Form.Item name="title" label="项目名称" rules={[{ required: true, message: "请输入" }]}>
@@ -312,12 +360,60 @@ export default function VideoPage() {
             <Select placeholder="选个声音" allowClear size="large"
               options={voices.map((v) => ({ label: v.name, value: v.id }))} />
           </Form.Item>
-          <Card size="small" title="上传产品照片或视频（可选）" style={{ borderRadius: 12, marginBottom: 16 }}>
-            <MaterialUploader onUpload={setUploadedMaterials} materials={uploadedMaterials} />
-          </Card>
+          <div style={{ marginBottom: 20 }}>
+            <div style={{ marginBottom: 8, fontSize: 14, fontWeight: 500, color: '#e2e8f0' }}>📸 素材（可选）</div>
+            <div style={{ marginBottom: 8, fontSize: 12, color: '#60a5fa', background: 'rgba(96,165,250,0.1)', padding: '6px 10px', borderRadius: 6 }}>
+              ⚡ 不上传也行，系统会自动匹配工厂实拍、产品展示等素材
+            </div>
+            <Button icon={<InboxOutlined />} onClick={() => {
+              // 动态创建 file input，绕过 Modal 拦截
+              const input = document.createElement('input')
+              input.type = 'file'
+              input.multiple = true
+              input.accept = '.jpg,.jpeg,.png,.gif,.webp,.bmp,.mp4,.mov,.avi,.webm,.mkv'
+              input.onchange = (e: any) => {
+                const files = e.target.files
+                if (!files || files.length === 0) return
+                Array.from(files).forEach((file: any) => {
+                  const ft = /\.(mp4|mov|avi|webm|mkv)$/i.test(file.name) ? 'videos' : 'images'
+                  const fd = new FormData()
+                  fd.append('file', file)
+                  fetch('/api/upload/file?file_type=' + ft, { method: 'POST', body: fd })
+                    .then(r => r.json())
+                    .then(data => {
+                      if (data.code === 0 && data.data?.path) {
+                        setUploadedMaterials((prev: string[]) => prev.includes(data.data.path) ? prev : [...prev, data.data.path])
+                        message.success(`${file.name} 上传成功`)
+                      } else {
+                        message.error(`${file.name}：${data.message || '失败'}`)
+                      }
+                    })
+                    .catch(() => message.error(`${file.name}：网络错误`))
+                })
+              }
+              input.click()
+            }}>
+              选择文件上传
+            </Button>
+            <span style={{ fontSize: 12, color: '#94a3b8', marginLeft: 8 }}>
+              支持 JPG/PNG/GIF/WebP/MP4/MOV
+            </span>
+            {uploadedMaterials.length > 0 && (
+              <div style={{ marginTop: 10 }}>
+                <Space size={4} wrap>
+                  {uploadedMaterials.map((path: string, i: number) => (
+                    <Tag key={i} closable onClose={() => setUploadedMaterials((p: string[]) => p.filter(x => x !== path))}
+                      style={{ marginBottom: 4 }}>
+                      {path.split('/').pop()?.slice(0, 20) || path}
+                    </Tag>
+                  ))}
+                </Space>
+              </div>
+            )}
+          </div>
           <Button type="primary" size="large" block icon={<ThunderboltOutlined />}
             onClick={handleCreate} style={{ borderRadius: 10 }}>
-            创建并生成视频
+            {editingId ? '保存并重新生成' : '创建并生成视频'}
           </Button>
         </Form>
       </Modal>

@@ -20,6 +20,7 @@ const { Sider, Content, Header } = Layout
 
 const menuItems = [
   { key: '/', icon: <DashboardOutlined />, label: '工作台' },
+  { key: '/quick-video', icon: <ThunderboltOutlined />, label: '快速出片' },
   { key: '/template', icon: <ThunderboltOutlined />, label: '文案模板' },
   { key: '/video', icon: <VideoCameraOutlined />, label: '视频制作' },
   { key: '/voice', icon: <SoundOutlined />, label: '语音选择' },
